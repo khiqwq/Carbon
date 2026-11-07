@@ -9,4 +9,5 @@ import org.spongepowered.asm.mixin.gen.Accessor;
 @Mixin(RenderSetup.class)
 public interface RenderSetupAccessor extends IrisCompatibility.RenderSetupAccess {
     @Override @Accessor("textureTransform") TextureTransform carbon$textureTransform();
+    @Override @Accessor("outputTarget") net.minecraft.client.renderer.rendertype.OutputTarget carbon$outputTarget();
 }

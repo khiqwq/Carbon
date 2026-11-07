@@ -6,11 +6,10 @@ import it.unimi.dsi.fastutil.ints.IntArrayList;
 import it.unimi.dsi.fastutil.ints.IntList;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.SubmitNodeStorage;
-import net.minecraft.client.renderer.feature.ItemFeatureRenderer;
 import net.minecraft.client.renderer.item.ItemStackRenderState;
 import net.minecraft.client.renderer.rendertype.TextureTransform;
 import net.minecraft.client.renderer.texture.OverlayTexture;
-import net.minecraft.client.resources.model.geometry.BakedQuad;
+import net.minecraft.client.renderer.block.model.BakedQuad;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import org.joml.Matrix4f;
@@ -74,20 +73,24 @@ public final class GenericItemRenderer {
                 || submit.foilType() == ItemStackRenderState.FoilType.SPECIAL || submit.quads().isEmpty()) return false;
         int[] captured = Carbon.IRIS.capture(submit);
         try {
-            Key key = new Key(List.copyOf(submit.quads()), new IntArrayList(submit.tintLayers()), submit.foilType(), Carbon.IRIS.identifiers());
+            Key key = new Key(List.copyOf(submit.quads()), new IntArrayList(submit.tintLayers()), submit.renderType(), submit.foilType(), Carbon.IRIS.identifiers());
             GpuItemBatch batch = meshes.get(key);
             if (batch == null) {
                 if (meshes.size() >= 256 || meshBytes >= 67108864) return false;
                 ItemStackRenderState state = new ItemStackRenderState();
                 var layer = state.newLayer();
                 layer.prepareQuadList().addAll(submit.quads());
-                for (int tint : submit.tintLayers()) layer.tintLayers().add(tint);
+                System.arraycopy(submit.tintLayers(), 0, layer.prepareTintLayers(submit.tintLayers().length), 0, submit.tintLayers().length);
+                layer.setRenderType(submit.renderType());
                 layer.setFoilType(submit.foilType());
                 try {
                     batch = new GpuItemBatch(new ItemStack(Items.STONE), state, Carbon.RENDERER, false, submit);
                     meshes.put(key, batch);
                     meshBytes += batch.meshBytes;
-                } catch (RuntimeException ignored) { return false; }
+                } catch (RuntimeException exception) {
+                    org.slf4j.LoggerFactory.getLogger("Carbon").debug("Keeping native item submission: {}", exception.toString());
+                    return false;
+                }
             }
             if (batch.count >= 65536) return false;
             batch.add(submit.pose().pose(), submit.pose().normal(), 0, 0, false, submit.lightCoords(), false, 0, 0, 0);
@@ -95,6 +98,18 @@ public final class GenericItemRenderer {
             instances++; totalInstances++;
             return true;
         } finally { Carbon.IRIS.restore(captured); }
+    }
+
+    // 过滤可实例化的提交，其余交还原版物品特性渲染。
+    public List<SubmitNodeStorage.ItemSubmit> collect(List<SubmitNodeStorage.ItemSubmit> submits) {
+        List<SubmitNodeStorage.ItemSubmit> remaining = submits;
+        if (active) {
+            remaining = new java.util.ArrayList<>(submits.size());
+            for (SubmitNodeStorage.ItemSubmit submit : submits) {
+                if (!submit(submit)) remaining.add(submit);
+            }
+        }
+        return remaining;
     }
 
     public void flush() {
@@ -105,7 +120,7 @@ public final class GenericItemRenderer {
                     Carbon.SODIUM.mark(batch.sprites);
                     batch.upload();
                     for (int pass = 0; pass < (batch.foil ? 2 : 1); pass++) for (var mesh : batch.meshes) {
-                        var type = pass == 0 ? mesh.type : ItemFeatureRenderer.getFoilRenderType(mesh.type, true);
+                        var type = pass == 0 ? mesh.type : net.minecraft.client.renderer.entity.ItemRenderer.getFoilRenderTypes(mesh.type, true, true).get(1);
                         if (pass == 0 || !Carbon.IRIS.shadowPass()) {
                             Carbon.IRIS.draw(type, mesh.vertices, mesh.vertexBuffer, mesh.indexBuffer, mesh.format, mesh.indices,
                                     batch.count, batch.instanceBuffer, 0, zero, 0, 0, batch.center, batch.halfSize);
@@ -139,7 +154,7 @@ public final class GenericItemRenderer {
                             glUniform1f(glGetUniformLocation(program, "GlintAlpha"), Minecraft.getInstance().options.glintStrength().get().floatValue());
                             for (var mesh : batch.meshes) {
                                 if (mesh.cull) glEnable(GL_CULL_FACE); else glDisable(GL_CULL_FACE);
-                                gpu.bindTexture(0, pass == 0 ? mesh.texture : ItemFeatureRenderer.ENCHANTED_GLINT_ITEM);
+                                gpu.bindTexture(0, pass == 0 ? mesh.texture : net.minecraft.client.renderer.entity.ItemRenderer.ENCHANTED_GLINT_ITEM);
                                 mesh.bind();
                                 glDrawElementsInstanced(GL_TRIANGLES, mesh.indices, GL_UNSIGNED_INT, 0, batch.count);
                                 drawCalls++; totalDraws++;
@@ -164,5 +179,5 @@ public final class GenericItemRenderer {
         active = failed = false;
     }
 
-    private record Key(List<BakedQuad> quads, IntList tints, ItemStackRenderState.FoilType foil, long identifiers) { }
+    private record Key(List<BakedQuad> quads, IntList tints, net.minecraft.client.renderer.rendertype.RenderType type, ItemStackRenderState.FoilType foil, long identifiers) { }
 }

@@ -2,29 +2,32 @@ package first.carbon;
 
 import com.mojang.brigadier.arguments.BoolArgumentType;
 import first.carbon.client.ItemBatchRenderer;
+import net.fabricmc.api.ClientModInitializer;
+import net.fabricmc.fabric.api.client.command.v2.ClientCommandRegistrationCallback;
+import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientLifecycleEvents;
+import net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents;
+import net.fabricmc.fabric.api.client.rendering.v1.world.WorldRenderEvents;
+import net.fabricmc.fabric.api.resource.ResourceManagerHelper;
+import net.fabricmc.fabric.api.resource.SimpleSynchronousResourceReloadListener;
+import net.fabricmc.loader.api.FabricLoader;
 import net.minecraft.network.chat.Component;
-import net.minecraft.server.packs.resources.ResourceManagerReloadListener;
-import net.neoforged.api.distmarker.Dist;
-import net.neoforged.bus.api.IEventBus;
-import net.neoforged.fml.ModContainer;
-import net.neoforged.fml.common.Mod;
-import net.neoforged.fml.config.ModConfig;
-import net.neoforged.neoforge.client.event.RegisterClientCommandsEvent;
-import net.neoforged.neoforge.client.event.AddClientReloadListenersEvent;
 import net.minecraft.resources.Identifier;
-import net.neoforged.neoforge.client.event.RenderLevelStageEvent;
-import net.neoforged.neoforge.client.event.ClientPlayerNetworkEvent;
-import net.neoforged.neoforge.client.gui.ConfigurationScreen;
-import net.neoforged.neoforge.client.gui.IConfigScreenFactory;
-import net.neoforged.neoforge.common.NeoForge;
-import net.neoforged.neoforge.common.ModConfigSpec;
-import net.neoforged.neoforge.event.GameShuttingDownEvent;
+import net.minecraft.server.packs.PackType;
+import net.minecraft.server.packs.resources.ResourceManager;
+import org.slf4j.LoggerFactory;
 
-import static net.minecraft.commands.Commands.argument;
-import static net.minecraft.commands.Commands.literal;
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.List;
+import java.util.Locale;
+import java.util.function.Function;
 
-@Mod(value = "carbon", dist = Dist.CLIENT)
-public final class Carbon {
+import static net.fabricmc.fabric.api.client.command.v2.ClientCommandManager.argument;
+import static net.fabricmc.fabric.api.client.command.v2.ClientCommandManager.literal;
+
+public final class Carbon implements ClientModInitializer {
     public static final first.carbon.compat.IrisCompatibility IRIS = new first.carbon.compat.IrisCompatibility();
     public static final first.carbon.compat.SodiumCompatibility SODIUM = new first.carbon.compat.SodiumCompatibility();
     public static final first.carbon.client.GenericItemRenderer GENERIC = new first.carbon.client.GenericItemRenderer();
@@ -32,48 +35,139 @@ public final class Carbon {
     public static final ItemBatchRenderer RENDERER = new ItemBatchRenderer();
     public static final Settings CONFIG = new Settings();
 
-    public Carbon(IEventBus modBus, ModContainer container) {
-        var oldConfig = net.neoforged.fml.loading.FMLPaths.CONFIGDIR.get().resolve("item_model_optimization-client.toml");
-        var config = net.neoforged.fml.loading.FMLPaths.CONFIGDIR.get().resolve("carbon-client.toml");
-        if (java.nio.file.Files.isRegularFile(oldConfig) && !java.nio.file.Files.exists(config)) {
-            try { java.nio.file.Files.copy(oldConfig, config); }
-            catch (java.io.IOException exception) { org.slf4j.LoggerFactory.getLogger("Carbon").warn("Unable to migrate configuration", exception); }
+    @Override
+    public void onInitializeClient() {
+        Path oldConfig = FabricLoader.getInstance().getConfigDir().resolve("item_model_optimization-client.toml");
+        if (Files.isRegularFile(oldConfig) && !Files.exists(CONFIG.path)) {
+            try {
+                Files.copy(oldConfig, CONFIG.path);
+            } catch (IOException exception) {
+                LoggerFactory.getLogger("Carbon").warn("Unable to migrate the previous client configuration", exception);
+            }
         }
-        container.registerConfig(ModConfig.Type.CLIENT, CONFIG.spec);
-        container.registerExtensionPoint(IConfigScreenFactory.class, ConfigurationScreen::new);
-        modBus.addListener((AddClientReloadListenersEvent event) -> event.addListener(Identifier.fromNamespaceAndPath("carbon", "meshes"), (ResourceManagerReloadListener) manager -> { RENDERER.invalidate(); GENERIC.invalidate(); SHADOWS.invalidate(); }));
-        NeoForge.EVENT_BUS.addListener((ClientPlayerNetworkEvent.LoggingOut event) -> { RENDERER.invalidate(); GENERIC.invalidate(); SHADOWS.invalidate(); });
-        NeoForge.EVENT_BUS.addListener((GameShuttingDownEvent event) -> { RENDERER.invalidate(); GENERIC.invalidate(); SHADOWS.invalidate(); });
-        NeoForge.EVENT_BUS.addListener((RenderLevelStageEvent.AfterOpaqueFeatures event) -> RENDERER.flush(event.getLevelRenderState().cameraRenderState));
-        NeoForge.EVENT_BUS.addListener((RegisterClientCommandsEvent event) -> event.getDispatcher().register(
+        CONFIG.load();
+        ResourceManagerHelper.get(PackType.CLIENT_RESOURCES).registerReloadListener(new SimpleSynchronousResourceReloadListener() {
+            @Override
+            public Identifier getFabricId() {
+                return Identifier.fromNamespaceAndPath("carbon", "meshes");
+            }
+
+            @Override
+            public void onResourceManagerReload(ResourceManager manager) {
+                invalidate();
+            }
+        });
+        ClientPlayConnectionEvents.DISCONNECT.register((handler, client) -> invalidate());
+        // NeoForge 的 AfterOpaqueFeatures：实体特性与不透明批次提交之后
+        WorldRenderEvents.AFTER_ENTITIES.register(context -> RENDERER.flush(context.worldState().cameraRenderState));
+        ClientLifecycleEvents.CLIENT_STOPPING.register(client -> invalidate());
+        ClientCommandRegistrationCallback.EVENT.register((dispatcher, registry) -> dispatcher.register(
                 literal("carbon")
                         .then(literal("enabled").then(argument("enabled", BoolArgumentType.bool()).executes(context -> {
                             CONFIG.enabled.set(BoolArgumentType.getBool(context, "enabled"));
-                            CONFIG.spec.save();
+                            CONFIG.save();
                             return 1;
                         })))
                         .then(literal("stats").executes(context -> {
-                            context.getSource().sendSuccess(() -> Component.literal(RENDERER.statistics()), false);
+                            context.getSource().sendFeedback(Component.literal(RENDERER.statistics()));
                             return 1;
                         }))));
     }
 
+    // Fabric 的断开事件可能在网络线程触发，GL 资源统一回到渲染线程释放
+    private static void invalidate() {
+        if (com.mojang.blaze3d.systems.RenderSystem.isOnRenderThread()) {
+            RENDERER.invalidate();
+            GENERIC.invalidate();
+            SHADOWS.invalidate();
+        } else net.minecraft.client.Minecraft.getInstance().execute(Carbon::invalidate);
+    }
+
+    // 与 NeoForge 版本同名同格式的 config/carbon-client.toml。
     public static final class Settings {
-        public final ModConfigSpec spec;
-        public final ModConfigSpec.BooleanValue enabled;
-        public final ModConfigSpec.BooleanValue optimizeDroppedItems;
-        public final ModConfigSpec.BooleanValue physicalDroppedItems;
-        public final ModConfigSpec.BooleanValue skipVisibilityChecks;
-        public final ModConfigSpec.DoubleValue cacheUpdateBudgetMs;
+        public final Path path = FabricLoader.getInstance().getConfigDir().resolve("carbon-client.toml");
+        public final Value<Boolean> enabled = new Value<>("enabled", "Cache standard item model geometry and instance matching render submissions.", true, Boolean::parseBoolean);
+        public final Value<Boolean> optimizeDroppedItems = new Value<>("optimizeDroppedItems", "Take over dropped-item models, spin and scale on the GPU. Disable to preserve other mods' dropped-item rendering and transforms.", true, Boolean::parseBoolean);
+        public final Value<Boolean> physicalDroppedItems = new Value<>("physicalDroppedItems", "Visual-only GPU tumbling and resting dropped items; requires optimizeDroppedItems. Does not change collisions, velocity or pickup.", false, Boolean::parseBoolean);
+        public final Value<Boolean> skipVisibilityChecks = new Value<>("skipVisibilityChecks", "Skip frustum and Sodium occlusion checks for the dedicated dropped-item pipeline; distance limits still apply.", true, Boolean::parseBoolean);
+        public final Value<Double> cacheUpdateBudgetMs = new Value<>("cacheUpdateBudgetMs", "CPU cache update budget per frame in milliseconds. Keep drawing the previous scene until the queue completes. 0 updates immediately; a single item can exceed the budget.\nRange: 0.0 ~ 20.0", 2.0, text -> Math.clamp(Double.parseDouble(text), 0.0, 20.0));
+        public final List<Value<?>> values = List.of(enabled, optimizeDroppedItems, physicalDroppedItems, skipVisibilityChecks, cacheUpdateBudgetMs);
 
         private Settings() {
-            ModConfigSpec.Builder builder = new ModConfigSpec.Builder();
-            enabled = builder.comment("Cache static ground item models and draw matching stacks in batches.").translation("carbon.configuration.enabled").define("enabled", true);
-            optimizeDroppedItems = builder.translation("carbon.configuration.optimizeDroppedItems").define("optimizeDroppedItems", true);
-            physicalDroppedItems = builder.translation("carbon.configuration.physicalDroppedItems").define("physicalDroppedItems", false);
-            skipVisibilityChecks = builder.comment("Submit batched items without vanilla frustum or Sodium visibility checks; distance limits still apply.").translation("carbon.configuration.skipVisibilityChecks").define("skipVisibilityChecks", true);
-            cacheUpdateBudgetMs = builder.comment("CPU cache update budget per frame in milliseconds. 0 updates immediately; a single item can exceed the budget.").translation("carbon.configuration.cacheUpdateBudgetMs").defineInRange("cacheUpdateBudgetMs", 2.0, 0.0, 20.0);
-            spec = builder.build();
+        }
+
+        public void load() {
+            if (Files.isRegularFile(path)) {
+                try {
+                    for (String line : Files.readAllLines(path, StandardCharsets.UTF_8)) {
+                        int split = line.indexOf('=');
+                        if (!line.isBlank() && !line.strip().startsWith("#") && split > 0) {
+                            String key = line.substring(0, split).strip();
+                            String text = line.substring(split + 1).replaceAll("#.*", "").strip();
+                            for (Value<?> value : values) {
+                                if (value.key.equals(key)) {
+                                    try {
+                                        value.parse(text);
+                                    } catch (RuntimeException exception) {
+                                        LoggerFactory.getLogger("Carbon").warn("Invalid {} entry '{}', using the default", key, text);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                } catch (IOException exception) {
+                    LoggerFactory.getLogger("Carbon").warn("Unable to read {}", path, exception);
+                }
+            }
+            save();
+        }
+
+        public void save() {
+            StringBuilder text = new StringBuilder();
+            for (Value<?> value : values) {
+                for (String comment : value.comment.split("\n")) text.append("#").append(comment).append('\n');
+                text.append(value.key).append(" = ").append(value.get()).append("\n\n");
+            }
+            try {
+                Files.createDirectories(path.getParent());
+                Files.writeString(path, text.toString().stripTrailing() + "\n", StandardCharsets.UTF_8);
+            } catch (IOException exception) {
+                LoggerFactory.getLogger("Carbon").warn("Unable to save {}", path, exception);
+            }
+        }
+    }
+
+    public static final class Value<T> {
+        public final String key;
+        public final String comment;
+        public final T defaultValue;
+        private final Function<String, T> parser;
+        private volatile T value;
+
+        private Value(String key, String comment, T defaultValue, Function<String, T> parser) {
+            this.key = key;
+            this.comment = comment;
+            this.defaultValue = defaultValue;
+            this.parser = parser;
+            value = defaultValue;
+        }
+
+        public T get() {
+            return value;
+        }
+
+        public void set(T value) {
+            this.value = value;
+        }
+
+        public String translation() {
+            return "carbon.configuration." + key;
+        }
+
+        private void parse(String text) {
+            String clean = text.toLowerCase(Locale.ROOT);
+            if (defaultValue instanceof Boolean && !clean.equals("true") && !clean.equals("false")) throw new IllegalArgumentException(key + " = " + text);
+            value = parser.apply(clean);
         }
     }
 }

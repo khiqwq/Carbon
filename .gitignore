@@ -5,3 +5,5 @@ run/
 .idea/
 *.iml
 /release-video/
+/run-prod/
+/run-bench/

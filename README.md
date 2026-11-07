@@ -1,6 +1,6 @@
 # Carbon（碳）
 
-Minecraft 26.1.2 / NeoForge 26.1.2 系列（构建使用 26.1.2.108） 客户端 GPU 物品模型渲染优化模组，Java 25，MIT 许可证。
+Minecraft 1.21.11 / Fabric Loader 0.18 及以上（需要 Fabric API）客户端 GPU 物品模型渲染优化模组，Java 21，MIT 许可证。本分支由 `26.1.2-neoforge` 回移，移植对照、实测与已知问题见 [Fabric 移植说明](FABRIC-PORT.md)。
 
 ![Carbon](branding/mod-cover.svg)
 
@@ -10,7 +10,7 @@ Minecraft 26.1.2 / NeoForge 26.1.2 系列（构建使用 26.1.2.108） 客户端
 
 ## 配置
 
-配置文件为 `config/carbon-client.toml`。模组配置界面提供中英文名称与提示。
+配置文件为 `config/carbon-client.toml`。安装 Mod Menu 后可打开配置界面，提供中英文名称与提示。
 
 ```toml
 enabled = true
@@ -31,10 +31,10 @@ cacheUpdateBudgetMs = 2.0
 
 ## 光影
 
-Iris 检测集中在 `IrisCompatibility`。本分支的新 RenderPipeline 与 1.21.1 不同，启用光影包时保留原生物品提交，避免错误的渲染目标、材质和阴影。
+Iris 检测集中在 `IrisCompatibility`，启用光影包时为 Iris 程序派生实例化变体，覆盖主通道与光影阴影。已验证 Iris 1.10.8 与 Photon v1.3b。
 
 ## 验证与构建
 
 各分支的最终测试报告统一保存在 [主分支 0.8 多版本报告](https://github.com/CHUJIAN-afk/Carbon/blob/master/benchmark/ports-0.8/README.md)，本分支不保留测试过程文件。
 
-[0.9-A Chloride 兼容性验证](https://github.com/CHUJIAN-afk/Carbon/blob/master/benchmark/chloride-0.9-A/README.md) · [更新记录](CHANGELOG.md)。使用 Java 25 执行 `gradlew.bat build`，输出 `build/libs/carbon-26.1.2.9-A.jar`。
+[0.9-A Chloride 兼容性验证](https://github.com/CHUJIAN-afk/Carbon/blob/master/benchmark/chloride-0.9-A/README.md) · [更新记录](CHANGELOG.md)。使用 Java 21 执行 `gradlew.bat build`，输出 `build/libs/carbon-1.21.11.9-A-fabric.jar`。`gradlew.bat prodClient -PsmokeTest` 以生产环境 Jar 运行冒烟测试；`gradlew.bat benchPack -PbenchDir=<目录>` 在整合包隔离副本中对比帧率（整合包的模组与配置需预先复制到该目录）。

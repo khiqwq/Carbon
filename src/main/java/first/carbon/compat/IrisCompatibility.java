@@ -183,7 +183,7 @@ public final class IrisCompatibility {
                      int instances, int instanceBuffer, int mode, Vector3f camera, float clock, float scale, Vector3f center, Vector3f halfSize) {
         RenderSetup setup = ((RenderTypeAccess) type).carbon$setup();
         var transforms = RenderSystem.getDynamicUniforms().writeTransform(RenderSystem.getModelViewMatrix(), new Vector4f(1), new Vector3f(), ((RenderSetupAccess) (Object) setup).carbon$textureTransform().getMatrix());
-        var target = type.outputTarget().getRenderTarget();
+        var target = ((RenderSetupAccess) (Object) setup).carbon$outputTarget().getRenderTarget();
         var color = RenderSystem.outputColorTextureOverride != null ? RenderSystem.outputColorTextureOverride : target.getColorTextureView();
         var depth = RenderSystem.outputDepthTextureOverride != null ? RenderSystem.outputDepthTextureOverride : target.getDepthTextureView();
         var autoIndices = RenderSystem.getSequentialBuffer(VertexFormat.Mode.QUADS);
@@ -252,7 +252,7 @@ public final class IrisCompatibility {
                                     default -> GL_UNSIGNED_INT;
                                 };
                                 if (name.equals("iris_UV1") || name.equals("iris_UV2") || name.equals("iris_Entity")) glVertexAttribIPointer(attribute, element.count(), glType, draw.format.getVertexSize(), draw.format.getOffset(element));
-                                else glVertexAttribPointer(attribute, element.count(), glType, element.normalized(), draw.format.getVertexSize(), draw.format.getOffset(element));
+                                else glVertexAttribPointer(attribute, element.count(), glType, (element.usage() == com.mojang.blaze3d.vertex.VertexFormatElement.Usage.NORMAL || element.usage() == com.mojang.blaze3d.vertex.VertexFormatElement.Usage.COLOR), draw.format.getVertexSize(), draw.format.getOffset(element));
                                 glEnableVertexAttribArray(attribute);
                             }
                         }
@@ -298,7 +298,7 @@ public final class IrisCompatibility {
     }
 
     public interface RenderTypeAccess { RenderSetup carbon$setup(); }
-    public interface RenderSetupAccess { net.minecraft.client.renderer.rendertype.TextureTransform carbon$textureTransform(); }
+    public interface RenderSetupAccess { net.minecraft.client.renderer.rendertype.TextureTransform carbon$textureTransform(); net.minecraft.client.renderer.rendertype.OutputTarget carbon$outputTarget(); }
     private record Stage(int type, String text) { }
     private record Draw(int vertexBuffer, int indexBuffer, VertexFormat format, int indices, int instances, int instanceBuffer, int mode,
                         Vector3f camera, float clock, float scale, Vector3f center, Vector3f halfSize) { }

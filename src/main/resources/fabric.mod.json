@@ -1,0 +1,33 @@
+{
+  "schemaVersion": 1,
+  "id": "carbon",
+  "version": "${version}",
+  "name": "Carbon（碳）",
+  "description": "Caches standard item model geometry on the GPU and instances matching submissions across display contexts. Preserves caller transforms in the generic pipeline and accelerates dropped-item animation and shadows, with optional visual-only GPU tumbling.",
+  "authors": ["FirstSight"],
+  "contact": {
+    "sources": "https://github.com/CHUJIAN-afk/Carbon"
+  },
+  "license": "MIT",
+  "icon": "assets/carbon/icon.png",
+  "environment": "client",
+  "entrypoints": {
+    "client": ["first.carbon.Carbon"],
+    "modmenu": ["first.carbon.compat.ModMenuIntegration"]
+  },
+  "mixins": ["carbon.mixins.json"],
+  "accessWidener": "carbon.accesswidener",
+  "depends": {
+    "fabricloader": ">=0.18.0",
+    "minecraft": "1.21.11",
+    "java": ">=21",
+    "fabric-api": "*"
+  },
+  "suggests": {
+    "iris": ">=1.10",
+    "modmenu": "*"
+  },
+  "breaks": {
+    "item_model_optimization": "*"
+  }
+}

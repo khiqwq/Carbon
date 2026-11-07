@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "id": "carbon_smoketest",
+  "version": "1.0.0",
+  "name": "Carbon Smoke Test",
+  "environment": "client",
+  "entrypoints": {
+    "client": [
+      "first.carbon.smoketest.SmokeTest",
+      "first.carbon.smoketest.Benchmark"
+    ]
+  },
+  "depends": {
+    "carbon": "*",
+    "fabric-api": "*"
+  }
+}

@@ -82,7 +82,7 @@ final class GpuFrame implements AutoCloseable {
         glDisable(GL_POLYGON_OFFSET_FILL);
         glBlendEquationSeparate(GL_FUNC_ADD, GL_FUNC_ADD);
         glActiveTexture(GL_TEXTURE2);
-        glBindTexture(GL_TEXTURE_2D, ((GlTexture) minecraft.gameRenderer.levelLightmap().texture()).glId());
+        glBindTexture(GL_TEXTURE_2D, ((GlTexture) minecraft.gameRenderer.lightTexture().getTextureView().texture()).glId());
         glBindSampler(2, ((GlSampler) RenderSystem.getSamplerCache().getClampToEdge(FilterMode.LINEAR)).getId());
         var lighting = RenderSystem.getShaderLights();
         if (lighting != null) {
