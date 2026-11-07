@@ -33,6 +33,7 @@ public final class Benchmark implements ClientModInitializer {
     private final long[] frameTimes = new long[1 << 20];
     private int frames;
     private long last, phaseStart;
+    private long[] gcStart = new long[2];
     private boolean measuring;
     private int stage, ticks, phase;
 
@@ -91,6 +92,14 @@ public final class Benchmark implements ClientModInitializer {
             minecraft.player.setYRot(0);
             minecraft.player.setXRot(30);
         }
+        // fly-* 阶段：以 30 格/秒水平飞行，持续加载新区块
+        if ((stage == 2 || stage == 3) && phases[phase].startsWith("fly") && minecraft.getSingleplayerServer() != null) {
+            var server = minecraft.getSingleplayerServer();
+            server.execute(() -> {
+                var player = server.getPlayerList().getPlayers().getFirst();
+                player.teleportTo(player.getX() + 1.5, 120, player.getZ());
+            });
+        }
         if (stage == 2 && ticks == 900) startPhase(minecraft);
         if (stage == 3 && ticks == seconds * 20) {
             finishPhase(minecraft);
@@ -117,7 +126,20 @@ public final class Benchmark implements ClientModInitializer {
         frames = 0;
         last = 0;
         measuring = true;
+        gcStart = gcTotals();
         phaseStart = System.nanoTime();
+    }
+
+    // 仅统计停顿型收集器（排除 G1 并发周期与 ZGC Cycles）
+    private long[] gcTotals() {
+        long count = 0, time = 0;
+        for (var bean : java.lang.management.ManagementFactory.getGarbageCollectorMXBeans()) {
+            if (!bean.getName().contains("Concurrent") && !bean.getName().contains("Cycles")) {
+                count += Math.max(0, bean.getCollectionCount());
+                time += Math.max(0, bean.getCollectionTime());
+            }
+        }
+        return new long[]{count, time};
     }
 
     private void finishPhase(Minecraft minecraft) {
@@ -129,8 +151,12 @@ public final class Benchmark implements ClientModInitializer {
         double slowTotal = 0;
         for (int i = frames - slowest; i < frames; i++) slowTotal += sorted[i];
         double low = slowest * 1e9 / slowTotal;
-        logger.info("BENCH {} enabled={} frames={} avgFps={} onePercentLow={} entities={} carbon: {}", phases[phase], Carbon.CONFIG.enabled.get(), frames,
-                String.format("%.1f", frames / elapsed), String.format("%.1f", low), minecraft.level.getEntityCount(), Carbon.RENDERER.statistics());
+        int stalls = 0;
+        for (int i = 0; i < frames; i++) if (frameTimes[i] >= 50_000_000L) stalls++;
+        long[] gc = gcTotals();
+        logger.info("BENCH {} enabled={} frames={} avgFps={} onePercentLow={} stalls50={} maxMs={} gcPauses={} gcMs={} entities={} carbon: {}", phases[phase], Carbon.CONFIG.enabled.get(), frames,
+                String.format("%.1f", frames / elapsed), String.format("%.1f", low), stalls, String.format("%.1f", frames == 0 ? 0 : sorted[frames - 1] / 1e6),
+                gc[0] - gcStart[0], gc[1] - gcStart[1], minecraft.level.getEntityCount(), Carbon.RENDERER.statistics());
         Screenshot.grab(minecraft.gameDirectory, "bench-" + phases[phase] + ".png", minecraft.getMainRenderTarget(), 1, message -> { });
     }
 

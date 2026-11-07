@@ -88,5 +88,7 @@ tasks.register('benchPack', net.fabricmc.loom.task.prod.ClientProductionRunTask)
     jvmArgs.addAll('-Xmx6G', '--add-modules', 'jdk.incubator.vector', '--enable-preview', '-XX:+ExplicitGCInvokesConcurrent', '-Dcarbon.bench=true',
             "-Dcarbon.bench.items=${findProperty('benchItems') ?: 1000}", "-Dcarbon.bench.seconds=${findProperty('benchSeconds') ?: 15}")
     if (project.hasProperty('benchPhases')) jvmArgs.add("-Dcarbon.bench.phases=${findProperty('benchPhases')}")
+    // 追加的 JVM 参数排在默认参数之后，可覆盖 -Xmx 等设置，例如 -PbenchJvm="-Xmx3072m -Xmn460m"
+    if (project.hasProperty('benchJvm')) jvmArgs.addAll(findProperty('benchJvm').toString().split(' ').findAll { it })
     if (project.hasProperty('benchJfr')) jvmArgs.addAll("-XX:FlightRecorderOptions=repository=${file('build/jfr')}", "-XX:StartFlightRecording=settings=profile,name=carbon")
 }
