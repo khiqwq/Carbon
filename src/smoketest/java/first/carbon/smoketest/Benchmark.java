@@ -68,7 +68,7 @@ public final class Benchmark implements ClientModInitializer {
         if (stage == 1 && minecraft.player != null && minecraft.getSingleplayerServer() != null && minecraft.screen == null) {
             stage = 2;
             ticks = 0;
-            minecraft.options.framerateLimit().set(260);
+            minecraft.options.framerateLimit().set(Integer.getInteger("carbon.bench.fps", 260));
             minecraft.options.enableVsync().set(false);
             minecraft.getWindow().updateVsync(false);
             var server = minecraft.getSingleplayerServer();
