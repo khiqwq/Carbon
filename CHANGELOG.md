@@ -1,5 +1,14 @@
 # 更新记录
 
+## 1.21.1.9-A-fabric — 2026-11-07
+
+- 移植至 Fabric 1.21.1（Fabric Loader 0.16+、Fabric API），渲染核心、着色器与 Iris 桥接与 1.21.1.9-A 一致；加载器差异与已知问题见 [Fabric 移植说明](FABRIC-PORT.md)。
+- NeoForge 事件改为 Fabric API 事件与 `GameRenderer` 帧开始注入；配置保持 `config/carbon-client.toml` 格式，配置界面通过 Mod Menu 打开。
+- 新增窗口上下文请求：依次尝试 OpenGL 4.6 至 3.3 核心上下文，避免原版 3.2 上下文使实例化整体停用；`-Dcarbon.vanillaContext=true` 可恢复原版行为。
+- 掉落物网格构建失败的模型记入拒绝列表，不再逐帧重试并重复输出警告。
+- 修复 Fabric 生产环境下 `Item.isFoil` 反射查找失败导致所有物品被视为动态光效、静止场景无法跨 tick 复用的问题；400 个静态掉落物的场景重建由 156 次降至 28 次。
+- 新增生产环境启动任务与冒烟测试模组。RTX 5070 Laptop、Sodium 0.8.13、Iris 1.8.14-beta.1 下，399 个静态掉落物合为 8 次实例化绘制与 1 次阴影绘制，场景复用正常；Photon v1.4 光影下实例化与光影阴影通道正常。
+
 ## 1.21.1.9-A — 2026-11-07
 
 - 调整掉落物收集顺序，在 Chloride 完成实体列表筛选后执行实例化，避免绕过实体数量限制。

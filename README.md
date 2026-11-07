@@ -1,6 +1,6 @@
 # Carbon（碳）
 
-客户端 GPU 物品模型渲染优化模组，适用于 Minecraft 1.21.1 / NeoForge 21.1.0 及以上，使用 Java 21，MIT 许可证。
+客户端 GPU 物品模型渲染优化模组，本分支适用于 Minecraft 1.21.1 / Fabric Loader 0.16 及以上，需要 Fabric API，使用 Java 21，MIT 许可证。NeoForge 版本见 `master` 分支，移植对照与已知问题见 [Fabric 移植说明](FABRIC-PORT.md)。
 
 ![Carbon](branding/mod-cover.svg)
 
@@ -12,7 +12,7 @@
 
 ## 配置
 
-配置文件为 `config/carbon-client.toml`，模组配置界面提供中文与英文名称、提示。
+配置文件为 `config/carbon-client.toml`，安装 Mod Menu 后可在模组列表打开配置界面，提供中文与英文名称、提示。
 
 ```toml
 enabled = true
@@ -34,12 +34,12 @@ cacheUpdateBudgetMs = 2.0
 
 Iris 访问集中在 `IrisCompatibility`，无需向 Iris 类注入 Mixin，也不修改其原生着色器程序。Carbon 保留 Iris 的扩展顶点、材质标识和渲染目标，为自己的绘制构建实例化变体，支持主渲染、光影阴影和管线重载。
 
-已验证 Iris `1.8.14-beta.1+mc1.21.1` 与 Photon `v1.4`。光影的原生阴影由 Iris 管理，特殊通道在需要时保留原生提交。
+NeoForge 分支已验证 Iris `1.8.14-beta.1+mc1.21.1` 与 Photon `v1.4`；Fabric 分支已验证 Iris `1.8.14-beta.1+1.21.1-fabric` 与 Photon `v1.4`，包括光影阴影。光影的原生阴影由 Iris 管理，特殊通道在需要时保留原生提交。
 
 ## 验证与构建
 
 [0.9-A Chloride 兼容性验证](benchmark/chloride-0.9-A/README.md) · [0.8 最终对照成绩](benchmark/final-0.8/README.md) · [0.7 测试报告与游戏截图](BENCHMARK.md) · [更新记录](CHANGELOG.md) · [SVG 封面](branding/mod-cover.svg)
 
-使用 Java 21，执行 `gradlew.bat build`，输出 `build/libs/carbon-1.21.1.9-A.jar`。
+使用 Java 21，执行 `gradlew.bat build`，输出 `build/libs/carbon-1.21.1.9-A-fabric.jar`。`gradlew.bat prodClient -PsmokeTest` 以生产环境 Jar 启动带 Sodium、Iris 与 Mod Menu 的客户端，并运行自动掉落物冒烟测试；去掉 `-PsmokeTest` 则手动测试。
 
 0.8 已同步至 [1.20.1 Forge](https://github.com/CHUJIAN-afk/Carbon/tree/1.20.1-forge) 与 [26.1.2 NeoForge](https://github.com/CHUJIAN-afk/Carbon/tree/26.1.2-neoforge)，各分支的构建与实测见 [多版本报告](benchmark/ports-0.8/README.md)。

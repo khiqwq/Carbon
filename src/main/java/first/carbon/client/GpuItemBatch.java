@@ -48,7 +48,7 @@ final class GpuItemBatch implements AutoCloseable {
                 quads.add(quad);
                 if (!sprites.contains(quad.getSprite())) sprites.add(quad.getSprite());
                 if (!renderer.opaqueSprites.computeIfAbsent(quad.getSprite().contents(), sprite -> {
-                    NativeImage image = sprite.getOriginalImage();
+                    NativeImage image = sprite.originalImage;
                     boolean opaque = true;
                     if (image.format().hasAlpha()) {
                         for (int y = 0; y < image.getHeight() && opaque; y++) {

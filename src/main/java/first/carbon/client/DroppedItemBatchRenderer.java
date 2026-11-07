@@ -10,6 +10,7 @@ import it.unimi.dsi.fastutil.longs.Long2IntOpenHashMap;
 import net.minecraft.client.Camera;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientLevel;
+import net.minecraft.client.renderer.ItemBlockRenderTypes;
 import net.minecraft.client.renderer.RenderType;
 import net.minecraft.client.renderer.ShaderInstance;
 import net.minecraft.client.renderer.LightTexture;
@@ -32,7 +33,6 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.minecraft.tags.ItemTags;
 import net.minecraft.world.phys.Vec3;
-import net.neoforged.neoforge.client.extensions.common.IClientItemExtensions;
 import org.joml.Matrix4f;
 import org.lwjgl.opengl.GL;
 import org.lwjgl.system.MemoryStack;
@@ -56,6 +56,9 @@ public final class DroppedItemBatchRenderer {
     private final Logger logger = LoggerFactory.getLogger("Carbon");
     private final Int2ObjectOpenHashMap<List<GpuDroppedItemBatch>> buckets = new Int2ObjectOpenHashMap<>();
     private final IdentityHashMap<Class<?>, Boolean> dynamicFoil = new IdentityHashMap<>();
+    // Item.isFoil 的运行时名称（生产环境为 intermediary 名）
+    private final String isFoilName = net.fabricmc.loader.api.FabricLoader.getInstance().getMappingResolver()
+            .mapMethodName("intermediary", "net.minecraft.class_1792", "method_7886", "(Lnet/minecraft/class_1799;)Z");
     private final Set<BakedModel> rejected = Collections.newSetFromMap(new IdentityHashMap<>());
     final IdentityHashMap<SpriteContents, Boolean> opaqueSprites = new IdentityHashMap<>();
     private final Matrix4f view = new Matrix4f();
@@ -309,7 +312,7 @@ public final class DroppedItemBatchRenderer {
                 cached.roll = 0;
                 cached.rate = 0;
                 BakedModel base = itemRenderer.getItemModelShaper().getItemModel(stack);
-                cached.dynamicModel = base.getClass() == SimpleBakedModel.class && !base.getOverrides().getOverrides().isEmpty();
+                cached.dynamicModel = base.getClass() == SimpleBakedModel.class && base.getOverrides().overrides.length != 0;
                 if (base.getClass() == SimpleBakedModel.class && !cached.dynamicModel) {
                     cached.batch = find(stack, base, true);
                 }
@@ -333,9 +336,8 @@ public final class DroppedItemBatchRenderer {
                 int count = stack.getCount();
                 int copies = count <= 1 ? 1 : count <= 16 ? 2 : count <= 32 ? 3 : count <= 48 ? 4 : 5;
                 if (shadow || batch.count + copies <= 65536) {
-                    IClientItemExtensions extensions = batch.extensions;
-                    boolean spread = extensions == IClientItemExtensions.DEFAULT || extensions.shouldSpreadAsEntity(stack);
-                    boolean bob = extensions == IClientItemExtensions.DEFAULT || extensions.shouldBobAsEntity(stack);
+                    boolean spread = true;
+                    boolean bob = true;
                     float ageOffset = entity.getAge() - (float) ticks;
                     if (physics && cached.motionTick != level.getGameTime()) {
                         if (cached.motionTick != Long.MIN_VALUE) {
@@ -477,7 +479,7 @@ public final class DroppedItemBatchRenderer {
                         updateDistanceMargin = Math.min(updateDistanceMargin, Math.abs(size * 64 * Entity.getViewScale() - item.position().distanceTo(camera)));
                     }
                     culled = skipVisibility ? !item.shouldRender(camera.x, camera.y, camera.z)
-                            : !dispatcher.shouldRender(item, minecraft.levelRenderer.getFrustum(), camera.x, camera.y, camera.z);
+                            : !dispatcher.shouldRender(item, (minecraft.levelRenderer.capturedFrustum != null ? minecraft.levelRenderer.capturedFrustum : minecraft.levelRenderer.cullingFrustum), camera.x, camera.y, camera.z);
                     if (!culled) {
                         Vec3 probe = item.getLightProbePosition(partialTick);
                         shadowPosition.set(Mth.floor(probe.x), Mth.floor(probe.y), Mth.floor(probe.z));
@@ -495,8 +497,7 @@ public final class DroppedItemBatchRenderer {
                             EntityCache cached = ((EntityCacheAccess) item).imo$cache();
                             updateStationary &= item.xOld == item.getX() && item.yOld == item.getY() && item.zOld == item.getZ()
                                     && (!physics || cached.rate == 0)
-                                    && !cached.dynamicModel
-                                    && cached.batch.extensions == IClientItemExtensions.DEFAULT;
+                                    && !cached.dynamicModel;
                             updateTickStable &= !cached.dynamicFoil && (physics || item.getAge() != -32768);
                         }
                     }
@@ -561,7 +562,7 @@ public final class DroppedItemBatchRenderer {
             if (!stack.has(DataComponents.ENCHANTMENT_GLINT_OVERRIDE)) {
                 dynamicFoil.computeIfAbsent(stack.getItem().getClass(), type -> {
                         try {
-                            return type.getMethod("isFoil", ItemStack.class).getDeclaringClass() != Item.class;
+                            return type.getMethod(isFoilName, ItemStack.class).getDeclaringClass() != Item.class;
                         } catch (ReflectiveOperationException exception) {
                             return true;
                         }
@@ -579,8 +580,8 @@ public final class DroppedItemBatchRenderer {
             }
             if (result == null) {
                 boolean supported = true;
-                for (BakedModel pass : model.getRenderPasses(stack, true)) {
-                    for (RenderType type : pass.getRenderTypes(stack, true)) {
+                for (BakedModel pass : List.of(model)) {
+                    for (RenderType type : List.of(ItemBlockRenderTypes.getRenderType(stack, true))) {
                         supported &= type == RenderType.entitySolid(TextureAtlas.LOCATION_BLOCKS) || type == RenderType.entityCutout(TextureAtlas.LOCATION_BLOCKS) || type == RenderType.entityCutoutNoCull(TextureAtlas.LOCATION_BLOCKS) || type == RenderType.entityTranslucentCull(TextureAtlas.LOCATION_BLOCKS) || type == RenderType.itemEntityTranslucentCull(TextureAtlas.LOCATION_BLOCKS);
                     }
                 }
@@ -595,6 +596,7 @@ public final class DroppedItemBatchRenderer {
                         cacheMisses++;
                         modelBytes += result.meshBytes;
                     } catch (Exception exception) {
+                        rejected.add(model);
                         logger.warn("Keeping vanilla renderer for {}: {}", stack.getItem(), exception.toString());
                     }
                 } else {

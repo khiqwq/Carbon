@@ -8,6 +8,7 @@ import com.mojang.blaze3d.vertex.MeshData;
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.VertexFormat;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.renderer.ItemBlockRenderTypes;
 import net.minecraft.client.renderer.RenderType;
 import net.minecraft.client.renderer.block.model.BakedQuad;
 import net.minecraft.client.renderer.entity.ItemEntityRenderer;
@@ -19,7 +20,6 @@ import net.minecraft.core.Direction;
 import net.minecraft.util.RandomSource;
 import net.minecraft.world.item.ItemDisplayContext;
 import net.minecraft.world.item.ItemStack;
-import net.neoforged.neoforge.client.extensions.common.IClientItemExtensions;
 import org.joml.Matrix3fc;
 import org.joml.Matrix4fc;
 import org.joml.Vector3f;
@@ -31,6 +31,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Stream;
 
 import static org.lwjgl.opengl.GL33.*;
 
@@ -42,7 +43,6 @@ final class GpuDroppedItemBatch implements AutoCloseable {
     final float groundScaleY;
     final float copySpacing;
     final float[] copyOffsets = new float[15];
-    final IClientItemExtensions extensions;
     final int instanceStride;
     final boolean entityBatch;
     final boolean foil;
@@ -86,7 +86,6 @@ final class GpuDroppedItemBatch implements AutoCloseable {
         gui3d = model.isGui3d();
         flat = physics || !gui3d;
         copySpacing = gui3d ? 0 : 0.09375f * model.getTransforms().ground.scale.z();
-        extensions = IClientItemExtensions.of(stack);
         RandomSource copyRandom = RandomSource.create(ItemEntityRenderer.getSeedForItemStack(stack));
         float spread = gui3d ? 0.15f : 0.075f;
         for (int copy = 1; copy < 5; copy++) {
@@ -107,8 +106,8 @@ final class GpuDroppedItemBatch implements AutoCloseable {
         Vector3f minimum = new Vector3f(Float.POSITIVE_INFINITY);
         Vector3f maximum = new Vector3f(Float.NEGATIVE_INFINITY);
         try {
-            for (BakedModel pass : model.getRenderPasses(stack, true)) {
-                boolean translucent = pass.getRenderTypes(stack, true).stream().anyMatch(type ->
+            for (BakedModel pass : List.of(model)) {
+                boolean translucent = Stream.of(ItemBlockRenderTypes.getRenderType(stack, true)).anyMatch(type ->
                         type == RenderType.entityTranslucentCull(TextureAtlas.LOCATION_BLOCKS)
                                 || type == RenderType.itemEntityTranslucentCull(TextureAtlas.LOCATION_BLOCKS));
                 RandomSource random = RandomSource.create(42);
@@ -118,7 +117,7 @@ final class GpuDroppedItemBatch implements AutoCloseable {
                         if (!sprites.contains(quad.getSprite())) sprites.add(quad.getSprite());
                         if (translucent) {
                             boolean opaque = renderer.opaqueSprites.computeIfAbsent(quad.getSprite().contents(), sprite -> {
-                                NativeImage image = sprite.getOriginalImage();
+                                NativeImage image = sprite.originalImage;
                                 boolean binaryAlpha = true;
                                 if (image.format().hasAlpha()) {
                                     for (int y = 0; y < image.getHeight() && binaryAlpha; y++) {
