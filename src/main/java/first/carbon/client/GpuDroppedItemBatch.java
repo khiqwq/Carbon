@@ -102,12 +102,28 @@ final class GpuDroppedItemBatch implements AutoCloseable {
         Vector3f minimum = new Vector3f(Float.POSITIVE_INFINITY);
         Vector3f maximum = new Vector3f(Float.NEGATIVE_INFINITY);
         try {
-            // 原版无 getRenderPasses：单一物品模型，半透明判定交给后续顶点 Alpha 检查。
+            // 原版无 getRenderPasses：单一物品模型；半透明渲染类型只接受二值透明度贴图，其余交还原版排序。
+            RenderType renderType = net.minecraft.client.renderer.ItemBlockRenderTypes.getRenderType(stack, true);
+            boolean translucent = renderType == RenderType.entityTranslucentCull(TextureAtlas.LOCATION_BLOCKS)
+                    || renderType == RenderType.itemEntityTranslucentCull(TextureAtlas.LOCATION_BLOCKS);
             RandomSource random = RandomSource.create(42);
             for (int face = -1; face < 6; face++) {
                 random.setSeed(42);
                 for (BakedQuad quad : model.getQuads(null, face < 0 ? null : Direction.from3DDataValue(face), random)) {
                     if (!sprites.contains(quad.getSprite())) sprites.add(quad.getSprite());
+                    if (translucent && !renderer.opaqueSprites.computeIfAbsent(quad.getSprite().contents(), sprite -> {
+                        com.mojang.blaze3d.platform.NativeImage image = ((first.carbon.mixin.SpriteContentsAccessor) sprite).carbon$image();
+                        boolean binaryAlpha = true;
+                        if (image.format().hasAlpha()) {
+                            for (int y = 0; y < image.getHeight() && binaryAlpha; y++) {
+                                for (int x = 0; x < image.getWidth() && binaryAlpha; x++) {
+                                    int alpha = image.getPixelRGBA(x, y) >>> 24;
+                                    binaryAlpha = alpha == 0 || alpha == 255;
+                                }
+                            }
+                        }
+                        return binaryAlpha;
+                    })) throw new IllegalArgumentException("Translucent pixels require vanilla sorting");
                     int[] vertices = quad.getVertices();
                     for (int i = 3; i < vertices.length; i += 8) {
                         int alpha = vertices[i] >>> 24;

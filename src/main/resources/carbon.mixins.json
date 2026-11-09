@@ -21,10 +21,10 @@
     "SpriteContentsAccessor",
     "VertexFormatAccessor",
     "ItemStackSceneMixin",
-    "ShaderInstanceAccessor"
+    "ShaderInstanceAccessor",
+    "WindowMixin"
   ],
   "injectors": {
     "defaultRequire": 1
-  },
-  "refmap": "carbon.refmap.json"
+  }
 }

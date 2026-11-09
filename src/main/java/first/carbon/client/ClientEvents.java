@@ -67,7 +67,8 @@ public final class ClientEvents {
                             return 1;
                         })))
                         .then(ClientCommandManager.literal("config").executes(context -> {
-                            Minecraft.getInstance().setScreen(new ItemConfigScreen(null));
+                            // 聊天框在命令返回后才关闭，推迟到下一次任务循环打开。
+                            Minecraft.getInstance().tell(() -> Minecraft.getInstance().setScreen(new ItemConfigScreen(null)));
                             return 1;
                         }))
                         .then(ClientCommandManager.literal("stats").executes(context -> {
@@ -76,9 +77,12 @@ public final class ClientEvents {
                         }))));
     }
 
+    // 断开事件可能在网络线程触发，GL 资源统一回到渲染线程释放。
     private static void invalidate() {
-        Carbon.Client.IRIS.invalidate();
-        Carbon.Client.RENDERER.invalidate();
-        Carbon.Client.DROPPED_RENDERER.invalidate();
+        if (com.mojang.blaze3d.systems.RenderSystem.isOnRenderThread()) {
+            Carbon.Client.IRIS.invalidate();
+            Carbon.Client.RENDERER.invalidate();
+            Carbon.Client.DROPPED_RENDERER.invalidate();
+        } else Minecraft.getInstance().execute(ClientEvents::invalidate);
     }
 }

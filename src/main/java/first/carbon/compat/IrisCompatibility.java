@@ -27,8 +27,8 @@ import static org.lwjgl.opengl.GL43.*;
 // Iris 的格式、通道和着色器适配均集中在此，不注入 Iris 类。
 public final class IrisCompatibility {
     private String namespace = "net.irisshaders.iris.";
-    private boolean checked, present, active, blocked;
-    private MethodHandle packInUse, shadowPass, pipelineGetter, getEntity, setEntity, getItem, setItem, getBlock, setBlock;
+    private boolean checked, present, active, blocked, unsupported;
+    private MethodHandle packInUse, shadowPass, pipelineGetter, handPass, getEntity, setEntity, getItem, setItem, getBlock, setBlock;
     private Object pipeline;
     private Object settings;
     private Object itemEntityId;
@@ -44,9 +44,10 @@ public final class IrisCompatibility {
             checked = true;
             try {
                 var lookup = MethodHandles.publicLookup();
-                Class<?> api;
-                try { api = Class.forName(namespace + "api.v0.IrisApi"); }
-                catch (ClassNotFoundException ignored) { namespace = "net.coderbot.iris."; api = Class.forName(namespace + "api.v0.IrisApi"); }
+                // 公开 API 的包名一直不变，旧版 Iris 的内部类位于 net.coderbot.iris。
+                Class<?> api = Class.forName("net.irisshaders.iris.api.v0.IrisApi");
+                try { Class.forName(namespace + "shadows.ShadowRenderingState"); }
+                catch (ClassNotFoundException ignored) { namespace = "net.coderbot.iris."; }
                 Object instance = api.getMethod("getInstance").invoke(null);
                 packInUse = lookup.unreflect(api.getMethod("isShaderPackInUse")).bindTo(instance);
                 present = true;
@@ -54,6 +55,12 @@ public final class IrisCompatibility {
                 shadowPass = lookup.unreflect(Class.forName(namespace + "shadows.ShadowRenderingState").getMethod("areShadowsCurrentlyBeingRendered"));
                 Object manager = Class.forName(namespace + "Iris").getMethod("getPipelineManager").invoke(null);
                 pipelineGetter = lookup.unreflect(manager.getClass().getMethod("getPipelineNullable")).bindTo(manager);
+                try {
+                    Class<?> hand = Class.forName(namespace + (namespace.startsWith("net.coderbot") ? "pipeline.HandRenderer" : "pathways.HandRenderer"));
+                    handPass = lookup.unreflect(hand.getMethod("isActive")).bindTo(hand.getField("INSTANCE").get(null));
+                } catch (ReflectiveOperationException ignored) {
+                    handPass = null;
+                }
                 Class<?> captured = Class.forName(namespace + "uniforms.CapturedRenderingState");
                 Object state = captured.getField("INSTANCE").get(null);
                 getEntity = lookup.unreflect(captured.getMethod("getCurrentRenderedEntity")).bindTo(state);
@@ -68,16 +75,17 @@ public final class IrisCompatibility {
                 itemEntityId = Class.forName(namespace + "shaderpack.materialmap.NamespacedId").getConstructor(String.class, String.class).newInstance("minecraft", "item");
                 present = true;
             } catch (ClassNotFoundException ignored) {
-                present = false;
+                // 未安装 Iris 时 present 仍为 false；旧版 Iris 缺少内部类时，开启光影即回退原版渲染。
+                unsupported = blocked = present;
             } catch (Throwable exception) {
-                blocked = true;
-                LoggerFactory.getLogger("Carbon").warn("Iris bridge initialization unavailable", exception);
+                unsupported = blocked = true;
+                LoggerFactory.getLogger("Carbon").info("Iris internals unavailable, keeping vanilla rendering while a shader pack is active: {}", exception.toString());
             }
         }
         if (present) {
             try {
                 boolean enabled = (boolean) packInUse.invokeExact();
-                Object current = pipelineGetter.invoke();
+                Object current = pipelineGetter == null ? null : pipelineGetter.invoke();
                 if (current != pipeline || active != enabled) {
                     invalidate();
                     pipeline = current;
@@ -112,7 +120,7 @@ public final class IrisCompatibility {
 
     public boolean shadowPass() {
         boolean shadow = false;
-        if (active) {
+        if (active && !blocked) {
             try { shadow = (boolean) shadowPass.invokeExact(); }
             catch (Throwable exception) { blocked = true; }
         }
@@ -131,7 +139,7 @@ public final class IrisCompatibility {
     @SuppressWarnings("unchecked")
     public int[] captureItem() {
         int[] previous = null;
-        if (active) {
+        if (active && !blocked) {
             try {
                 previous = new int[]{(int) getEntity.invokeExact(), (int) getItem.invokeExact(), (int) getBlock.invokeExact()};
                 Object ids = entityIds.invoke(settings);
@@ -154,7 +162,7 @@ public final class IrisCompatibility {
 
     public long identifiers() {
         long value = 0;
-        if (active) {
+        if (active && !blocked) {
             try {
                 value = ((int) getEntity.invokeExact() & 65535L) | (((int) getBlock.invokeExact() & 65535L) << 16)
                         | (((int) getItem.invokeExact() & 65535L) << 32);
@@ -198,6 +206,7 @@ public final class IrisCompatibility {
     public ShaderInstance shader(ShaderInstance selected, RenderType type, boolean dropped) {
         if (active && pipeline != null && (dropped || type instanceof Layer)) {
             try {
+                if (!dropped && handPass != null && (boolean) handPass.invokeExact()) return selected;
                 RenderType original = unwrap(type);
                 String key;
                 if (shadowPass()) key = "SHADOW_ENTITIES_CUTOUT";
@@ -212,7 +221,7 @@ public final class IrisCompatibility {
                 Object shaderKey = Enum.valueOf((Class) keys, key);
                 Object shader = shaders.getClass().getMethod("getShader", keys).invoke(shaders, shaderKey);
                 if (shader instanceof ShaderInstance instance) return instance;
-            } catch (ReflectiveOperationException exception) {
+            } catch (Throwable exception) {
                 blocked = true;
             }
         }
@@ -310,7 +319,7 @@ public final class IrisCompatibility {
         for (Program program : programs.values()) program.close();
         programs.clear();
         layers.clear();
-        blocked = false;
+        blocked = unsupported;
         generation++;
     }
 
@@ -400,7 +409,8 @@ public final class IrisCompatibility {
                 for (int i = 0; i < glGetProgrami(source, GL_ACTIVE_ATTRIBUTES); i++) {
                     String name = glGetActiveAttrib(source, i, 256, size, type);
                     String attribute = name.equals("Position") || name.equals("Normal") || name.equals("Color") || name.startsWith("UV") ? "iris_" + name : name;
-                    glBindAttribLocation(id, glGetAttribLocation(source, name), attribute);
+                    int location = glGetAttribLocation(source, name);
+                    if (location >= 0) glBindAttribLocation(id, location, attribute);
                 }
                 int outputs = glGetProgramInterfacei(source, GL_PROGRAM_OUTPUT, GL_ACTIVE_RESOURCES);
                 for (int i = 0; i < outputs; i++) {

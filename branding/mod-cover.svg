@@ -1,16 +1,29 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="400" height="400" viewBox="0 0 400 400" role="img" aria-labelledby="title description">
-  <title id="title">Carbon · 碳</title>
-  <desc id="description">自上而下由深灰渐变至纯黑的背景，中央小巧的灰色圆角六边形以粗线和深灰描边呈现卡通风格，象征碳的六元环结构。</desc>
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+  <title>Carbon</title>
   <defs>
-    <linearGradient id="background" x1="0" y1="0" x2="0" y2="400" gradientUnits="userSpaceOnUse">
-      <stop stop-color="#1c1c1c"/>
-      <stop offset="1" stop-color="#000000"/>
-    </linearGradient>
-    <path id="hexagon" d="M189.608 112Q200 106 210.392 112L271.014 147Q281.406 153 281.406 165V235Q281.406 247 271.014 253L210.392 288Q200 294 189.608 288L128.986 253Q118.594 247 118.594 235V165Q118.594 153 128.986 147Z"/>
+    <radialGradient id="bg" cx="34%" cy="26%" r="105%"><stop stop-color="#1b2f42"/><stop offset="1" stop-color="#060910"/></radialGradient>
+    <filter id="glow" x="-30%" y="-30%" width="160%" height="160%"><feGaussianBlur stdDeviation="20"/></filter>
+    <clipPath id="table"><polygon points="228.0,147.0 296.4,186.5 296.4,265.5 228.0,305.0 159.6,265.5 159.6,186.5"/></clipPath>
   </defs>
-  <rect width="400" height="400" fill="url(#background)"/>
-  <g fill="none" stroke-linejoin="round" stroke-linecap="round">
-    <use href="#hexagon" stroke="#393939" stroke-width="26"/>
-    <use href="#hexagon" stroke="#a0a0a0" stroke-width="19"/>
+  <rect width="512" height="512" rx="96" fill="url(#bg)"/>
+  <polygon points="322.2,178.2 443.5,248.2 443.5,388.2 322.2,458.2 201.0,388.2 201.0,248.2" fill="#227a86" fill-opacity="0.275"/>
+  <polygon points="290.6,146.6 411.8,216.6 411.8,356.6 290.6,426.6 169.3,356.6 169.3,216.6" fill="#2cb0b0" fill-opacity="0.53"/>
+  <polygon points="228.0,60.0 371.8,143.0 371.8,309.0 228.0,392.0 84.2,309.0 84.2,143.0" fill="#58ffd6" fill-opacity=".47" filter="url(#glow)"/>
+  <polygon points="228.0,68.0 364.8,147.0 296.4,186.5 228.0,147.0" fill="#96ffe2"/>
+  <polygon points="364.8,147.0 364.8,305.0 296.4,265.5 296.4,186.5" fill="#3ac4bc"/>
+  <polygon points="364.8,305.0 228.0,384.0 228.0,305.0 296.4,265.5" fill="#0e5868"/>
+  <polygon points="228.0,384.0 91.2,305.0 159.6,265.5 228.0,305.0" fill="#092a3c"/>
+  <polygon points="91.2,305.0 91.2,147.0 159.6,186.5 159.6,265.5" fill="#1c7c8a"/>
+  <polygon points="91.2,147.0 228.0,68.0 228.0,147.0 159.6,186.5" fill="#e0fff5"/>
+  <polygon points="228.0,147.0 296.4,186.5 296.4,265.5 228.0,305.0 159.6,265.5 159.6,186.5" fill="#133e50"/>
+  <polygon points="98.0,96.0 306.0,96.0 98.0,304.0" fill="#78f0dc" fill-opacity=".47" clip-path="url(#table)"/>
+  <g fill="none" stroke-linejoin="round">
+    <line x1="228.0" y1="68.0" x2="228.0" y2="147.0" stroke="#ebfffa" stroke-opacity=".47" stroke-width="2"/>
+    <line x1="364.8" y1="147.0" x2="296.4" y2="186.5" stroke="#ebfffa" stroke-opacity=".47" stroke-width="2"/>
+    <line x1="364.8" y1="305.0" x2="296.4" y2="265.5" stroke="#ebfffa" stroke-opacity=".47" stroke-width="2"/>
+    <line x1="228.0" y1="384.0" x2="228.0" y2="305.0" stroke="#ebfffa" stroke-opacity=".47" stroke-width="2"/>
+    <line x1="91.2" y1="305.0" x2="159.6" y2="265.5" stroke="#ebfffa" stroke-opacity=".47" stroke-width="2"/>
+    <line x1="91.2" y1="147.0" x2="159.6" y2="186.5" stroke="#ebfffa" stroke-opacity=".47" stroke-width="2"/>
+    <polygon points="228.0,147.0 296.4,186.5 296.4,265.5 228.0,305.0 159.6,265.5 159.6,186.5" stroke="#beffee" stroke-opacity=".78" stroke-width="3"/>
   </g>
 </svg>
