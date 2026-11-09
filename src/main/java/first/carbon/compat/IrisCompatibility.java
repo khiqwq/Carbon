@@ -379,7 +379,8 @@ public final class IrisCompatibility {
                 for (int i = 0; i < glGetProgrami(source, GL_ACTIVE_ATTRIBUTES); i++) {
                     String name = glGetActiveAttrib(source, i, 256, size, type);
                     String attribute = name.equals("Position") || name.equals("Normal") || name.equals("Color") || name.startsWith("UV") ? "iris_" + name : name;
-                    glBindAttribLocation(id, glGetAttribLocation(source, name), attribute);
+                    int location = glGetAttribLocation(source, name);
+                    if (location >= 0) glBindAttribLocation(id, location, attribute);
                 }
                 int outputs = glGetProgramInterfacei(source, GL_PROGRAM_OUTPUT, GL_ACTIVE_RESOURCES);
                 for (int i = 0; i < outputs; i++) {

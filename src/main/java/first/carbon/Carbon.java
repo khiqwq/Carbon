@@ -63,6 +63,12 @@ public final class Carbon implements ClientModInitializer {
         ClientLifecycleEvents.CLIENT_STOPPING.register(client -> invalidate());
         ClientCommandRegistrationCallback.EVENT.register((dispatcher, registry) -> dispatcher.register(
                 literal("carbon")
+                        .then(literal("config").executes(context -> {
+                            // 聊天框在命令返回后才关闭，排到下一轮任务再打开。
+                            var minecraft = net.minecraft.client.Minecraft.getInstance();
+                            minecraft.schedule(() -> minecraft.setScreen(new first.carbon.client.ConfigScreen(null)));
+                            return 1;
+                        }))
                         .then(literal("enabled").then(argument("enabled", BoolArgumentType.bool()).executes(context -> {
                             CONFIG.enabled.set(BoolArgumentType.getBool(context, "enabled"));
                             CONFIG.save();
