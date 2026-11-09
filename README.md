@@ -28,7 +28,7 @@ cacheUpdateBudgetMs = 2.0
 - `skipVisibilityChecks`：默认开启，恢复 0.7 的行为，跳过视锥与遮挡检查，提交距离内的普通掉落物，包括摄像机后的物品；仅转向时复用场景。关闭后恢复完整可见性检查，渲染距离限制始终有效。
 - `cacheUpdateBudgetMs`：过期的掉落物缓存排队分帧更新，每帧默认分配 2 毫秒，可设为 0–20 毫秒，0 表示当帧立即完成。队列完成前继续绘制上一份场景；预算仅限制缓存更新，不限制整帧耗时，单个复杂物品的更新可能超出预算。
 
-`/carbon enabled false` 关闭优化，`/carbon stats` 查看绘制和缓存统计。升级时替换旧的 Item Model Optimization Jar；新配置尚不存在时会迁移旧客户端配置。
+`/carbon config` 打开配置界面，`/carbon enabled false` 关闭优化，`/carbon stats` 查看绘制和缓存统计。升级时替换旧的 Item Model Optimization Jar；新配置尚不存在时会迁移旧客户端配置。
 
 ## 光影兼容
 
@@ -38,8 +38,17 @@ NeoForge 分支已验证 Iris `1.8.14-beta.1+mc1.21.1` 与 Photon `v1.4`；Fabri
 
 ## 验证与构建
 
-[0.9-A Chloride 兼容性验证](benchmark/chloride-0.9-A/README.md) · [0.8 最终对照成绩](benchmark/final-0.8/README.md) · [0.7 测试报告与游戏截图](BENCHMARK.md) · [更新记录](CHANGELOG.md) · [SVG 封面](branding/mod-cover.svg)
+[更新记录](CHANGELOG.md) · [SVG 封面](branding/mod-cover.svg)
 
-使用 Java 21，执行 `gradlew.bat build`，输出 `build/libs/carbon-1.21.1.9-A-fabric.jar`。`gradlew.bat prodClient -PsmokeTest` 以生产环境 Jar 启动带 Sodium、Iris 与 Mod Menu 的客户端，并运行自动掉落物冒烟测试；去掉 `-PsmokeTest` 则手动测试。
+使用 Java 21，执行 `gradlew.bat build`，输出 `build/libs/carbon-1.21.1.9-B-fabric.jar`。`gradlew.bat prodClient -PsmokeTest` 以生产环境 Jar 启动带 Sodium、Iris 与 Mod Menu 的客户端，并运行自动掉落物冒烟测试；去掉 `-PsmokeTest` 则手动测试。
 
-0.8 已同步至 [1.20.1 Forge](https://github.com/CHUJIAN-afk/Carbon/tree/1.20.1-forge) 与 [26.1.2 NeoForge](https://github.com/CHUJIAN-afk/Carbon/tree/26.1.2-neoforge)，各分支的构建与实测见 [多版本报告](benchmark/ports-0.8/README.md)。
+## 分支与致谢
+
+| 分支 | Minecraft | 运行环境 | 许可证 |
+| --- | --- | --- | --- |
+| [`1.21.11`](https://github.com/khiqwq/Carbon/tree/1.21.11) | 1.21.11 | Fabric Loader 0.18+，Java 21 | MIT |
+| [`1.21.1`](https://github.com/khiqwq/Carbon/tree/1.21.1) | 1.21.1 | Fabric Loader 0.16+，Java 21 | MIT |
+| [`1.20.1`](https://github.com/khiqwq/Carbon/tree/1.20.1) | 1.20.1 | Fabric Loader 0.15+，Java 17 | GPL-3.0 |
+| [`1.17.1`](https://github.com/khiqwq/Carbon/tree/1.17.1) | 1.17.1 | Fabric Loader 0.15+，Java 16+ | GPL-3.0 |
+
+本项目是 [CHUJIAN-afk/Carbon](https://github.com/CHUJIAN-afk/Carbon)（FirstSight，MIT）的非官方 Fabric 移植。1.20.1 与 1.17.1 分支基于 Colin_101 的 [Carbon-for-Fabric](https://github.com/Colin1456/Carbon-for-Fabric)，沿用其 GPL-3.0 许可证，上游代码的 MIT 声明保留在 `LICENSE-MIT`。

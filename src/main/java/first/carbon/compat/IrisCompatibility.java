@@ -29,7 +29,7 @@ import static org.lwjgl.opengl.GL43.*;
 // Iris 的格式、通道和着色器适配均集中在此，不注入 Iris 类。
 public final class IrisCompatibility {
     private boolean checked, present, active, blocked;
-    private MethodHandle packInUse, shadowPass, pipelineGetter, getEntity, setEntity, getItem, setItem, getBlock, setBlock;
+    private MethodHandle packInUse, shadowPass, pipelineGetter, handPass, getEntity, setEntity, getItem, setItem, getBlock, setBlock;
     private Object pipeline;
     private Object settings;
     private Object itemEntityId;
@@ -51,6 +51,8 @@ public final class IrisCompatibility {
                 shadowPass = lookup.unreflect(Class.forName("net.irisshaders.iris.shadows.ShadowRenderingState").getMethod("areShadowsCurrentlyBeingRendered"));
                 Object manager = Class.forName("net.irisshaders.iris.Iris").getMethod("getPipelineManager").invoke(null);
                 pipelineGetter = lookup.unreflect(manager.getClass().getMethod("getPipelineNullable")).bindTo(manager);
+                Class<?> hand = Class.forName("net.irisshaders.iris.pathways.HandRenderer");
+                handPass = lookup.unreflect(hand.getMethod("isActive")).bindTo(hand.getField("INSTANCE").get(null));
                 Class<?> captured = Class.forName("net.irisshaders.iris.uniforms.CapturedRenderingState");
                 Object state = captured.getField("INSTANCE").get(null);
                 getEntity = lookup.unreflect(captured.getMethod("getCurrentRenderedEntity")).bindTo(state);
@@ -182,6 +184,7 @@ public final class IrisCompatibility {
     public ShaderInstance shader(ShaderInstance selected, RenderType type, boolean dropped) {
         if (active && pipeline != null && (dropped || type instanceof Layer)) {
             try {
+                if (!dropped && (boolean) handPass.invokeExact()) return selected;
                 RenderType original = unwrap(type);
                 String key;
                 if (shadowPass()) key = "SHADOW_ENTITIES_CUTOUT";
@@ -196,7 +199,7 @@ public final class IrisCompatibility {
                 Object shaderKey = Enum.valueOf((Class) keys, key);
                 Object shader = shaders.getClass().getMethod("getShader", keys).invoke(shaders, shaderKey);
                 if (shader instanceof ShaderInstance instance) return instance;
-            } catch (ReflectiveOperationException exception) {
+            } catch (Throwable exception) {
                 blocked = true;
             }
         }
@@ -383,7 +386,8 @@ public final class IrisCompatibility {
                 for (int i = 0; i < glGetProgrami(source, GL_ACTIVE_ATTRIBUTES); i++) {
                     String name = glGetActiveAttrib(source, i, 256, size, type);
                     String attribute = name.equals("Position") || name.equals("Normal") || name.equals("Color") || name.startsWith("UV") ? "iris_" + name : name;
-                    glBindAttribLocation(id, glGetAttribLocation(source, name), attribute);
+                    int location = glGetAttribLocation(source, name);
+                    if (location >= 0) glBindAttribLocation(id, location, attribute);
                 }
                 int outputs = glGetProgramInterfacei(source, GL_PROGRAM_OUTPUT, GL_ACTIVE_RESOURCES);
                 for (int i = 0; i < outputs; i++) {

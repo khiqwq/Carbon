@@ -14,7 +14,7 @@
 | 构建 | Fabric Loom 1.16.1 · Gradle 9.6.1 |
 | 可选 | Mod Menu 11（配置界面）· Iris 1.8.x（光影）· Sodium 0.8.x |
 
-构建：`gradlew build`，输出 `build/libs/carbon-1.21.1.9-A-fabric.jar`。
+构建：`gradlew build`，输出 `build/libs/carbon-1.21.1.9-B-fabric.jar`。
 
 ## NeoForge → Fabric 对照
 
