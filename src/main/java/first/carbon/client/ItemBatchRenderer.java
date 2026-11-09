@@ -23,8 +23,8 @@ import com.mojang.math.Matrix4f;
 import org.lwjgl.opengl.GL;
 import org.lwjgl.system.MemoryStack;
 import org.lwjgl.system.MemoryUtil;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import org.apache.logging.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
 
 import java.io.InputStream;
 import java.lang.invoke.MethodHandle;
@@ -40,7 +40,7 @@ import java.util.Locale;
 import static org.lwjgl.opengl.GL33.*;
 
 public final class ItemBatchRenderer {
-    private final Logger logger = LoggerFactory.getLogger("Carbon");
+    private final Logger logger = LogManager.getLogger("Carbon");
     private final Int2ObjectOpenHashMap<List<GpuItemBatch>> buckets = new Int2ObjectOpenHashMap<>();
     private final Reference2ObjectOpenHashMap<ItemStack, StackCache> stacks = new Reference2ObjectOpenHashMap<>();
     private final Reference2ObjectOpenHashMap<MultiBufferSource.BufferSource, Source> sources = new Reference2ObjectOpenHashMap<>();
@@ -331,9 +331,9 @@ public final class ItemBatchRenderer {
                 if (!Carbon.Client.IRIS.usesShader(shader)) {
                     glUseProgram(program);
                     FloatBuffer matData = memory.mallocFloat(16);
-                    RenderSystem.getModelViewMatrix().storeTransposed(matData); glUniformMatrix4fv(uniforms[0], false, matData);
-                    RenderSystem.getProjectionMatrix().storeTransposed(matData); glUniformMatrix4fv(uniforms[1], false, matData);
-                    RenderSystem.getTextureMatrix().storeTransposed(matData); glUniformMatrix4fv(uniforms[2], false, matData);
+                    RenderSystem.getModelViewMatrix().store(matData); glUniformMatrix4fv(uniforms[0], false, matData);
+                    RenderSystem.getProjectionMatrix().store(matData); glUniformMatrix4fv(uniforms[1], false, matData);
+                    RenderSystem.getTextureMatrix().store(matData); glUniformMatrix4fv(uniforms[2], false, matData);
                     glUniform1i(uniforms[3], 0);
                     if (shader != null && shader.LIGHT0_DIRECTION != null && shader.LIGHT1_DIRECTION != null) {
                         glUniform3fv(uniforms[4], shader.LIGHT0_DIRECTION.getFloatBuffer());
@@ -518,8 +518,9 @@ public final class ItemBatchRenderer {
             }
             int offset = count++ * 128;
             data.position(offset);
-            pose.pose().storeTransposed(data.asFloatBuffer());
-            pose.normal().storeTransposed(data.asFloatBuffer());
+            pose.pose().store(data.asFloatBuffer());
+            data.position(offset + 64);
+            pose.normal().store(data.asFloatBuffer());
             data.clear().limit(data.capacity());
             data.putInt(offset + 100, light);
             data.putInt(offset + 104, overlay);

@@ -1,9 +1,6 @@
 # Carbon（碳）
 
-Minecraft 1.17.1 Fabric 客户端 GPU 物品模型渲染优化模组，Java 16+，MIT 许可证。
-
-- Fabric Loader 0.12+，Fabric API 0.46.x（模组 id 为 `fabric`），Mod Menu 2.x 可选。
-- 构建：Java 17 toolchain + `--release 16`，Loom 1.7.4 官方 Mojang 映射，输出 `carbon-1.17.1.9-A-fabric.jar`。
+Minecraft 1.17.1 / Fabric Loader 0.15 及以上（需要 Fabric API 0.46.x）客户端 GPU 物品模型渲染优化模组，Java 16 及以上，GPL-3.0 许可证。
 
 ![Carbon](branding/mod-cover.svg)
 
@@ -29,11 +26,11 @@ cacheUpdateBudgetMs = 2.0
 - `skipVisibilityChecks`：专用管线默认跳过遮挡与视锥检查，完整提交距离内的普通掉落物；距离限制始终有效。
 - `cacheUpdateBudgetMs`：每帧缓存更新预算，默认 2 毫秒，可设为 0–20 毫秒，0 表示立即完成；队列完成前绘制旧实例与阴影。单个物品更新可能超预算。
 
-`/carbon enabled false` 停用优化，`/carbon stats` 查看统计。安装 Mod Menu 后可在模组列表的“配置”按钮打开设置界面。
+`/carbon config` 打开配置界面，`/carbon enabled false` 停用优化，`/carbon stats` 查看统计。安装 Mod Menu 后可在模组列表的“配置”按钮打开设置界面。
 
 ## 光影
 
-Iris / Oculus 访问集中在 `IrisCompatibility`，未向光影模组注入 Mixin；无法保持原生通道语义时保留原有提交。
+Iris 访问集中在 `IrisCompatibility`，未向光影模组注入 Mixin。Iris 1.2.x 缺少实例化所需的内部接口，启用光影包时自动回退原版物品渲染，关闭光影包后恢复实例化。
 
 ## 与 Forge 版的差异
 
@@ -49,4 +46,15 @@ Iris / Oculus 访问集中在 `IrisCompatibility`，未向光影模组注入 Mix
 
 ## 验证与构建
 
-使用 Java 17 执行 `gradlew.bat build`，输出 `build/libs/carbon-1.17.1.9-A-fabric.jar`。原 Forge 工程备份在 `forge/` 目录。
+[更新记录](CHANGELOG.md)。使用 Java 21 执行 `gradlew.bat build`，输出 `build/libs/carbon-1.17.1.9-B-fabric.jar`。`gradlew.bat prodClient -PsmokeTest` 以生产环境 Jar 运行冒烟测试，追加 `-Pbare` 时不加载 Sodium 与 Iris。
+
+## 分支与致谢
+
+| 分支 | Minecraft | 运行环境 | 许可证 |
+| --- | --- | --- | --- |
+| [`1.21.11`](https://github.com/khiqwq/Carbon/tree/1.21.11) | 1.21.11 | Fabric Loader 0.18+，Java 21 | MIT |
+| [`1.21.1`](https://github.com/khiqwq/Carbon/tree/1.21.1) | 1.21.1 | Fabric Loader 0.16+，Java 21 | MIT |
+| [`1.20.1`](https://github.com/khiqwq/Carbon/tree/1.20.1) | 1.20.1 | Fabric Loader 0.15+，Java 17 | GPL-3.0 |
+| [`1.17.1`](https://github.com/khiqwq/Carbon/tree/1.17.1) | 1.17.1 | Fabric Loader 0.15+，Java 16+ | GPL-3.0 |
+
+本项目是 [CHUJIAN-afk/Carbon](https://github.com/CHUJIAN-afk/Carbon)（FirstSight，MIT）的非官方 Fabric 移植。1.20.1 与 1.17.1 分支基于 Colin_101 的 [Carbon-for-Fabric](https://github.com/Colin1456/Carbon-for-Fabric)，沿用其 GPL-3.0 许可证，上游代码的 MIT 声明保留在 `LICENSE-MIT`。

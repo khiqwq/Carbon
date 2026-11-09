@@ -2,8 +2,8 @@ package first.carbon;
 
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.loader.api.FabricLoader;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import org.apache.logging.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -12,7 +12,7 @@ import java.nio.file.Path;
 import java.util.List;
 
 public final class Carbon implements ClientModInitializer {
-    private static final Logger LOGGER = LoggerFactory.getLogger("Carbon");
+    private static final Logger LOGGER = LogManager.getLogger("Carbon");
     public static final Settings CONFIG = new Settings();
 
     @Override

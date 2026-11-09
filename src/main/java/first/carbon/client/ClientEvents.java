@@ -14,7 +14,7 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.packs.PackType;
 import net.minecraft.server.packs.resources.ResourceManager;
-import org.slf4j.LoggerFactory;
+import org.apache.logging.log4j.LogManager;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -28,7 +28,7 @@ public final class ClientEvents {
         Path config = configDir.resolve("carbon-client.toml");
         if (Files.isRegularFile(oldConfig) && !Files.exists(config)) {
             try { Files.copy(oldConfig, config); }
-            catch (IOException exception) { LoggerFactory.getLogger("Carbon").warn("Unable to migrate configuration", exception); }
+            catch (IOException exception) { LogManager.getLogger("Carbon").warn("Unable to migrate configuration", exception); }
         }
         ResourceManagerHelper.get(PackType.CLIENT_RESOURCES).registerReloadListener(new SimpleSynchronousResourceReloadListener() {
             @Override
@@ -68,7 +68,8 @@ public final class ClientEvents {
                             return 1;
                         })))
                         .then(ClientCommandManager.literal("config").executes(context -> {
-                            Minecraft.getInstance().setScreen(new ItemConfigScreen(null));
+                            // 聊天框在命令返回后才关闭，推迟到下一次任务循环打开。
+                            Minecraft.getInstance().tell(() -> Minecraft.getInstance().setScreen(new ItemConfigScreen(null)));
                             return 1;
                         }))
                         .then(ClientCommandManager.literal("stats").executes(context -> {
@@ -77,9 +78,12 @@ public final class ClientEvents {
                         })));
     }
 
+    // 断开事件可能在网络线程触发，GL 资源统一回到渲染线程释放。
     private static void invalidate() {
-        Carbon.Client.IRIS.invalidate();
-        Carbon.Client.RENDERER.invalidate();
-        Carbon.Client.DROPPED_RENDERER.invalidate();
+        if (com.mojang.blaze3d.systems.RenderSystem.isOnRenderThread()) {
+            Carbon.Client.IRIS.invalidate();
+            Carbon.Client.RENDERER.invalidate();
+            Carbon.Client.DROPPED_RENDERER.invalidate();
+        } else Minecraft.getInstance().execute(ClientEvents::invalidate);
     }
 }

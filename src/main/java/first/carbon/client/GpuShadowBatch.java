@@ -177,8 +177,8 @@ final class GpuShadowBatch implements AutoCloseable {
                 }
                 glUseProgram(program);
                 FloatBuffer matData = memory.mallocFloat(16);
-                view.storeTransposed(matData); glUniformMatrix4fv(viewUniform, false, matData);
-                projection.storeTransposed(matData); glUniformMatrix4fv(projectionUniform, false, matData);
+                view.store(matData); glUniformMatrix4fv(viewUniform, false, matData);
+                projection.store(matData); glUniformMatrix4fv(projectionUniform, false, matData);
                 glUniform3f(cameraUniform, (float) (camera.x - originX), (float) (camera.y - originY), (float) (camera.z - originZ));
                 float[] color = RenderSystem.getShaderColor();
                 glUniform4f(colorUniform, color[0], color[1], color[2], color[3]);

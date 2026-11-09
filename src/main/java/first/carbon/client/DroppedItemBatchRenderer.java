@@ -34,8 +34,8 @@ import net.minecraft.world.phys.Vec3;
 import com.mojang.math.Matrix4f;
 import org.lwjgl.opengl.GL;
 import org.lwjgl.system.MemoryStack;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import org.apache.logging.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -52,9 +52,12 @@ import java.util.Set;
 import static org.lwjgl.opengl.GL33.*;
 
 public final class DroppedItemBatchRenderer {
-    private final Logger logger = LoggerFactory.getLogger("Carbon");
+    private final Logger logger = LogManager.getLogger("Carbon");
     private final Int2ObjectOpenHashMap<List<GpuDroppedItemBatch>> buckets = new Int2ObjectOpenHashMap<>();
     private final IdentityHashMap<Class<?>, Boolean> dynamicFoil = new IdentityHashMap<>();
+    // Item.isFoil 的运行时名称（生产环境为 intermediary 名）
+    private final String isFoilName = net.fabricmc.loader.api.FabricLoader.getInstance().getMappingResolver()
+            .mapMethodName("intermediary", "net.minecraft.class_1792", "method_7886", "(Lnet/minecraft/class_1799;)Z");
     private final Set<BakedModel> rejected = Collections.newSetFromMap(new IdentityHashMap<>());
     final IdentityHashMap<net.minecraft.client.renderer.texture.TextureAtlasSprite, Boolean> opaqueSprites = new IdentityHashMap<>();
     private final Matrix4f view = new Matrix4f();
@@ -266,7 +269,8 @@ public final class DroppedItemBatchRenderer {
             shadows.receivers.clear();
         }
         shadowInstances = shadows == null ? 0 : shadows.count;
-        for (List<GpuDroppedItemBatch> bucket : buckets.values()) {            for (GpuDroppedItemBatch batch : bucket) {
+        for (List<GpuDroppedItemBatch> bucket : buckets.values()) {
+            for (GpuDroppedItemBatch batch : bucket) {
                 if (!sceneValid) batch.retainedCount = 0;
                 batch.count = retained && batch.entityBatch ? batch.retainedCount : 0;
                 if (!retained) batch.physicsMoving = false;
@@ -318,7 +322,8 @@ public final class DroppedItemBatchRenderer {
                 cached.rate = 0;
                 BakedModel base = itemRenderer.getItemModelShaper().getItemModel(stack);
                 cached.dynamicModel = base.getClass() == SimpleBakedModel.class
-                        && base.getOverrides() != net.minecraft.client.renderer.block.model.ItemOverrides.EMPTY;                if (base.getClass() == SimpleBakedModel.class && !cached.dynamicModel) {
+                        && base.getOverrides() != net.minecraft.client.renderer.block.model.ItemOverrides.EMPTY;
+                if (base.getClass() == SimpleBakedModel.class && !cached.dynamicModel) {
                     cached.batch = find(stack, base, true);
                 }
                 cached.dynamicFoil = dynamicFoil.getOrDefault(stack.getItem().getClass(), true);
@@ -377,7 +382,8 @@ public final class DroppedItemBatchRenderer {
                                 offset.sub(center);
                                 pose.pushPose();
                                 pose.translate(offset.x(), offset.y() + ((entity.getId() * 0x9E3779B9) >>> 16) * (0.003f / 65535), offset.z());
-                                pose.mulPose(rotation);                                itemRenderer.render(stack, ItemTransforms.TransformType.GROUND, false, pose, buffers, light, OverlayTexture.NO_OVERLAY, batch.model);
+                                pose.mulPose(rotation);
+                                itemRenderer.render(stack, ItemTransforms.TransformType.GROUND, false, pose, buffers, light, OverlayTexture.NO_OVERLAY, batch.model);
                                 pose.popPose();
                             }
                         } finally { capturing = false; }
@@ -571,7 +577,7 @@ public final class DroppedItemBatchRenderer {
                 && !(foil && (stack.getItem() == Items.COMPASS || stack.getItem() == Items.CLOCK))) {
             dynamicFoil.computeIfAbsent(stack.getItem().getClass(), type -> {
                 try {
-                    return type.getMethod("isFoil", ItemStack.class).getDeclaringClass() != Item.class;
+                    return type.getMethod(isFoilName, ItemStack.class).getDeclaringClass() != Item.class;
                 } catch (ReflectiveOperationException exception) {
                     return true;
                 }
@@ -588,7 +594,7 @@ public final class DroppedItemBatchRenderer {
             }
             if (result == null) {
                 // 原版无 getRenderPasses/getRenderTypes：仅接受标准实体通道的普通模型。
-                RenderType type = RenderType.itemEntityTranslucentCull(TextureAtlas.LOCATION_BLOCKS);
+                RenderType type = net.minecraft.client.renderer.ItemBlockRenderTypes.getRenderType(stack, true);
                 boolean supported = type == RenderType.entitySolid(TextureAtlas.LOCATION_BLOCKS) || type == RenderType.entityCutout(TextureAtlas.LOCATION_BLOCKS) || type == RenderType.entityCutoutNoCull(TextureAtlas.LOCATION_BLOCKS) || type == RenderType.entityTranslucentCull(TextureAtlas.LOCATION_BLOCKS) || type == RenderType.itemEntityTranslucentCull(TextureAtlas.LOCATION_BLOCKS);
                 if (supported) {
                     try {
@@ -601,6 +607,7 @@ public final class DroppedItemBatchRenderer {
                         cacheMisses++;
                         modelBytes += result.meshBytes;
                     } catch (Exception exception) {
+                        rejected.add(model);
                         logger.warn("Keeping vanilla renderer for {}: {}", stack.getItem(), exception.toString());
                     }
                 } else {
@@ -649,12 +656,12 @@ public final class DroppedItemBatchRenderer {
                                             glUseProgram(drawProgram);
                                             glUniform1i(glGetUniformLocation(drawProgram, "GlintPass"), pass);
                                             FloatBuffer matData = memory.mallocFloat(16);
-                                            RenderSystem.getTextureMatrix().storeTransposed(matData);
+                                            RenderSystem.getTextureMatrix().store(matData);
                                             glUniformMatrix4fv(glGetUniformLocation(drawProgram, "TextureMat"), false, matData);
                                             glUniform1f(glGetUniformLocation(drawProgram, "GlintAlpha"), 1.0f);
-                                            view.storeTransposed(matData);
+                                            view.store(matData);
                                             glUniformMatrix4fv(glGetUniformLocation(drawProgram, "View"), false, matData);
-                                            projection.storeTransposed(matData);
+                                            projection.store(matData);
                                             glUniformMatrix4fv(glGetUniformLocation(drawProgram, "Projection"), false, matData);
                                             glUniform3f(glGetUniformLocation(drawProgram, "Camera"), (float) (camera.x - originX),
                                                     (float) (camera.y - originY), (float) (camera.z - originZ));

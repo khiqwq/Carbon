@@ -30,6 +30,8 @@ void main() {
     vec3 normal = normalize(rotation * Normal);
     gl_Position = Projection * View * vec4(position, 1.0);
     vertexDistance = FogShape == 0 ? length(position) : max(length(position.xz), abs(position.y));
+    // 此版本原版光照方向位于视图空间。
+    normal = normalize(mat3(View) * normal);
     float light = min(1.0, (max(0.0, dot(Light0, normal)) + max(0.0, dot(Light1, normal))) * 0.6 + 0.4);
     vertexColor = vec4(Color.rgb * light, Color.a);
     lightMapColor = texelFetch(Sampler2, clamp(max(UV2, Light) / 16, ivec2(0), ivec2(15)), 0);

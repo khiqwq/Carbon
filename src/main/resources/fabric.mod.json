@@ -5,9 +5,9 @@
   "name": "Carbon（碳）",
   "description": "GPU instancing for standard item models, dropped-item animation, glint, shadows and optional visual physics.",
   "authors": [
-    "FirstSight,Colin_101(Fabric移植者)"
+    "FirstSight"
   ],
-  "license": "GPL",
+  "license": "GPL-3.0-only",
   "icon": "assets/carbon/icon.png",
   "environment": "client",
   "entrypoints": {
@@ -22,12 +22,20 @@
     "carbon.mixins.json"
   ],
   "depends": {
-    "fabricloader": ">=0.12.0",
+    "fabricloader": ">=0.15.0",
     "minecraft": "~1.17.1",
     "java": ">=16",
     "fabric": "*"
   },
   "suggests": {
     "modmenu": "*"
+  },
+  "contributors": [
+    "Colin_101",
+    "khiqwq"
+  ],
+  "contact": {
+    "sources": "https://github.com/khiqwq/Carbon",
+    "issues": "https://github.com/khiqwq/Carbon/issues"
   }
 }
