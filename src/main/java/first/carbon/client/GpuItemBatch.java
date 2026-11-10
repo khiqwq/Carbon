@@ -38,6 +38,9 @@ final class GpuItemBatch implements AutoCloseable {
     final org.joml.Vector3f center = new org.joml.Vector3f();
     final org.joml.Vector3f halfSize = new org.joml.Vector3f();
     final int instanceBuffer;
+    // RenderPipeline 路径（Vulkan 或 -Dcarbon.blaze3d=true）：不创建任何 GL 对象，实例数据放在 GpuBuffer 中
+    final boolean b3d = Carbon.useB3d();
+    GpuBuffer instances;
     long meshBytes;
     int count, capacity, lastFrame;
     boolean flushed, closed;
@@ -77,8 +80,8 @@ final class GpuItemBatch implements AutoCloseable {
             copyOffsets[offset + 1] = (random.nextFloat() * 2 - 1) * spread;
             if (gui3d) copyOffsets[offset + 2] = (random.nextFloat() * 2 - 1) * spread;
         }
-        instanceBuffer = glGenBuffers();
-        int vao = glGetInteger(GL_VERTEX_ARRAY_BINDING), buffer = glGetInteger(GL_ARRAY_BUFFER_BINDING);
+        instanceBuffer = b3d ? 0 : glGenBuffers();
+        int vao = b3d ? 0 : glGetInteger(GL_VERTEX_ARRAY_BINDING), buffer = b3d ? 0 : glGetInteger(GL_ARRAY_BUFFER_BINDING);
         Map<Material, ByteBufferBuilder> allocators = new LinkedHashMap<>();
         Map<Material, BufferBuilder> builders = new LinkedHashMap<>();
         QuadInstance instance = new QuadInstance();
@@ -147,8 +150,10 @@ final class GpuItemBatch implements AutoCloseable {
             renderer.capturing = false;
             Carbon.IRIS.restore(captured);
             for (ByteBufferBuilder allocator : allocators.values()) allocator.close();
-            glBindVertexArray(vao);
-            glBindBuffer(GL_ARRAY_BUFFER, buffer);
+            if (!b3d) {
+                glBindVertexArray(vao);
+                glBindBuffer(GL_ARRAY_BUFFER, buffer);
+            }
         }
     }
     void add(Matrix4fc matrix, Matrix3fc normal, float ageOffset, float phase, boolean animated,
@@ -220,15 +225,24 @@ final class GpuItemBatch implements AutoCloseable {
         dirty = true;
     }
 
+    // 物理化掉落物按平放姿态计算（与 GL 路径的 Flat = 1 一致）
+    boolean flatPhysics() {
+        return physics;
+    }
+
     long upload() {
         if (!dirty && uploadedCount == count && gpuCapacity >= capacity) return 0;
-        glBindBuffer(GL_ARRAY_BUFFER, instanceBuffer);
+        if (!b3d) glBindBuffer(GL_ARRAY_BUFFER, instanceBuffer);
         int bytes = count * instanceStride;
         int first = 0;
         int last = bytes;
         if (gpuCapacity < capacity) {
-            glBufferData(GL_ARRAY_BUFFER, capacity * (long) instanceStride, GL_DYNAMIC_DRAW);
+            if (!b3d) glBufferData(GL_ARRAY_BUFFER, capacity * (long) instanceStride, GL_DYNAMIC_DRAW);
             gpuCapacity = capacity;
+            if (b3d && instances != null) {
+                instances.close();
+                instances = null;
+            }
         } else {
             int common = Math.min(count, uploadedCount) * instanceStride;
             first = data.slice(0, common).mismatch(previous.slice(0, common));
@@ -245,7 +259,8 @@ final class GpuItemBatch implements AutoCloseable {
             preparedValid = false;
             first &= ~3;
             last = Math.min(bytes, (last + 3) & ~3);
-            glBufferSubData(GL_ARRAY_BUFFER, first, data.slice(first, last - first));
+            if (b3d) instances = B3d.upload(instances, "Carbon item instances", data, capacity * (long) instanceStride, first, last);
+            else glBufferSubData(GL_ARRAY_BUFFER, first, data.slice(first, last - first));
             MemoryUtil.memCopy(MemoryUtil.memAddress(data) + first, MemoryUtil.memAddress(previous) + first, last - first);
         }
         uploadedCount = count;
@@ -260,7 +275,10 @@ final class GpuItemBatch implements AutoCloseable {
             mesh.close();
         }
         meshes.clear();
-        glDeleteBuffers(instanceBuffer);
+        if (b3d) {
+            if (instances != null) instances.close();
+            instances = null;
+        } else glDeleteBuffers(instanceBuffer);
         if (preparedBuffer != 0) {
             glDeleteBuffers(preparedBuffer);
         }
@@ -297,11 +315,16 @@ final class GpuItemBatch implements AutoCloseable {
             this.cull = cull;
             this.type = type;
             this.format = format;
-            vao = glGenVertexArrays();
             this.vertices = RenderSystem.getDevice().createBuffer(() -> "Carbon item mesh", GpuBuffer.USAGE_VERTEX, vertices);
+            indices = vertexCount / 4 * 6;
+            if (b3d) {
+                // 索引使用 RenderSystem 的四边形顺序索引缓冲，不需要 VAO 与独立索引
+                vao = vertexBuffer = indexBuffer = 0;
+                return;
+            }
+            vao = glGenVertexArrays();
             vertexBuffer = ((ItemBatchRenderer.BufferAccess) this.vertices).imo$handle();
             indexBuffer = glGenBuffers();
-            indices = vertexCount / 4 * 6;
             glBindVertexArray(vao);
             glBindBuffer(GL_ARRAY_BUFFER, vertexBuffer);
             bindVertices();
@@ -369,10 +392,12 @@ final class GpuItemBatch implements AutoCloseable {
 
         @Override
         public void close() {
-            glDeleteVertexArrays(vao);
-            Carbon.IRIS.releaseMesh(vertexBuffer);
+            if (!b3d) {
+                glDeleteVertexArrays(vao);
+                Carbon.IRIS.releaseMesh(vertexBuffer);
+                glDeleteBuffers(indexBuffer);
+            }
             vertices.close();
-            glDeleteBuffers(indexBuffer);
         }
     }
 }

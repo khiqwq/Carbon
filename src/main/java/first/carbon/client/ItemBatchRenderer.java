@@ -109,8 +109,16 @@ public final class ItemBatchRenderer {
         updatedEntities = 0;
         shadowCollected = shadowFlushed = false;
         active = false;
-        if (!failed && Carbon.IRIS.canInstance() && Carbon.CONFIG.enabled.get() && minecraft.gameRenderer.mainRenderTarget().getColorTexture() instanceof GlTexture && GL.getCapabilities().OpenGL33) {
-            if (program == 0) {
+        boolean b3d = Carbon.useB3d();
+        if (!failed && Carbon.IRIS.canInstance() && Carbon.CONFIG.enabled.get()
+                && (b3d ? !Carbon.IRIS.active() : minecraft.gameRenderer.mainRenderTarget().getColorTexture() instanceof GlTexture && GL.getCapabilities().OpenGL33)) {
+            if (b3d) {
+                // RenderPipeline 路径不需要 GL 程序与计算着色器，动画在顶点着色器中计算
+                if (shadows == null) {
+                    shadows = new GpuShadowBatch();
+                    logger.info("GPU item instancing ready through {} render pipelines", com.mojang.blaze3d.systems.RenderSystem.getDevice().getDeviceInfo().backendName());
+                }
+            } else if (program == 0) {
                 try {
                     program = createProgram("instanced.vsh", "instanced.fsh");
                     entityProgram = createProgram(physics ? "physics_instanced.vsh" : "entity_instanced.vsh", "instanced.fsh");
@@ -131,7 +139,7 @@ public final class ItemBatchRenderer {
                     logger.error("Keeping vanilla item rendering", exception);
                 }
             }
-            active = !failed && program != 0;
+            active = !failed && (b3d || program != 0);
         }
         boolean shadowOption = minecraft.options.entityShadows().get() && !Carbon.IRIS.active();
         boolean skip = Carbon.CONFIG.skipVisibilityChecks.get();
@@ -407,10 +415,27 @@ public final class ItemBatchRenderer {
                 drawIris(state.viewRotationMatrix, state.pos, false);
             } else if (instances > 0 || shadows != null && shadows.count > 0) {
                 // 没有实例和阴影时跳过状态保存与帧缓冲切换
-                drawFrame(state);
+                if (Carbon.useB3d()) drawB3d(state);
+                else drawFrame(state);
             }
             active = false;
             evictStale();
+        }
+    }
+
+    private void drawB3d(CameraRenderState state) {
+        var camera = new org.joml.Vector3f((float) (state.pos.x - originX), (float) (state.pos.y - originY), (float) (state.pos.z - originZ));
+        List<GpuItemBatch> batches = new ArrayList<>();
+        for (var bucket : buckets.values()) for (var batch : bucket) if (batch.count > 0 && !batch.flushed) batches.add(batch);
+        if (!batches.isEmpty()) {
+            // 先上传以计入统计，drawItems 中的上传随后直接返回
+            for (var batch : batches) uploadedBytes += batch.upload();
+            drawCalls += B3d.drawItems(physics ? B3d.Kind.PHYSICS : B3d.Kind.DROPPED, batches, state.viewRotationMatrix, camera, clock, "Carbon dropped items");
+            for (var batch : batches) batch.flushed = true;
+        }
+        if (shadows != null && shadows.count > 0) {
+            uploadedBytes += shadows.drawB3d(state.viewRotationMatrix, camera);
+            shadowDrawCalls++;
         }
     }
 

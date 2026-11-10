@@ -57,12 +57,13 @@ public final class GenericItemRenderer {
             invalidate();
             irisGeneration = Carbon.IRIS.generation;
         }
+        boolean b3d = Carbon.useB3d();
         active = !failed && Carbon.CONFIG.enabled.get() && Carbon.IRIS.canInstance() && Carbon.IRIS.canSubmit()
-                && Minecraft.getInstance().gameRenderer.mainRenderTarget().getColorTexture() instanceof com.mojang.blaze3d.opengl.GlTexture
-                && GL.getCapabilities().OpenGL33 && RenderSystem.getProjectionMatrixBuffer() != null && RenderSystem.getShaderFog() != null;
+                && (b3d || Minecraft.getInstance().gameRenderer.mainRenderTarget().getColorTexture() instanceof com.mojang.blaze3d.opengl.GlTexture
+                && GL.getCapabilities().OpenGL33) && RenderSystem.getProjectionMatrixBuffer() != null && RenderSystem.getShaderFog() != null;
         frame = Minecraft.getInstance().gui.hud.getGuiTicks();
         instances = drawCalls = 0;
-        if (active && !Carbon.IRIS.active() && program == 0) {
+        if (active && !Carbon.IRIS.active() && !b3d && program == 0) {
             try {
                 program = Carbon.RENDERER.createProgram("generic_instanced.vsh", "generic_instanced.fsh");
                 glUniformBlockBinding(program, glGetUniformBlockIndex(program, "Projection"), 4);
@@ -152,6 +153,12 @@ public final class GenericItemRenderer {
                         }
                     }
                 }
+            } else if (Carbon.useB3d()) {
+                java.util.List<GpuItemBatch> batches = new java.util.ArrayList<>();
+                for (GpuItemBatch batch : meshes.values()) if (batch.count != 0) batches.add(batch);
+                int draws = B3d.drawItems(B3d.Kind.GENERIC, batches, RenderSystem.getModelViewStack(), new org.joml.Vector3f(), 0, "Carbon items");
+                drawCalls += draws;
+                totalDraws += draws;
             } else try (GpuFrame gpu = new GpuFrame(framebuffer, true); MemoryStack memory = MemoryStack.stackPush()) {
                 var scissor = RenderSystem.getScissorStateForRenderTypeDraws();
                 if (scissor.enabled()) { glEnable(GL_SCISSOR_TEST); glScissor(scissor.x(), scissor.y(), scissor.width(), scissor.height()); }

@@ -1,5 +1,12 @@
 # 更新记录
 
+## 26.2.9-B.2-fabric — 2026-11-10
+
+- 支持 Vulkan 后端：新增基于 RenderPipeline 的实例化路径，掉落物、物理化掉落物、通用物品提交、附魔光效与掉落物阴影在 Vulkan 下实例化。OpenGL 默认仍使用原有 GL 路径，`-Dcarbon.blaze3d=true` 可强制切换。
+- 修复 B 与 B.1 在 Vulkan 后端下渲染世界时崩溃：光影检测在判断后端之前调用了 OpenGL 接口，此前说明中的“Vulkan 下保持原版渲染”并未生效。
+- Iris 1.11.4 不支持 Vulkan 后端，光影仍只在 OpenGL 下可用。
+- 冒烟测试按后端输出设备信息；新增 `-Dcarbon.scale` 掉落物规模基准。
+
 ## 26.2.9-B.1-fabric — 2026-11-10
 
 - 其他模组在原版渲染器中改写掉落物时，掉落物专用管线自动让位，保留其效果：antideath-survival-assistant 的 `disableItemEntityMulPose`、TweakerMore 的 `preciseItemEntityModel`、Meteor Client 的 ItemPhysics 以及隐藏掉落物的 NoRender。对方选项关闭后自动恢复；物品提交仍由通用管线实例化。

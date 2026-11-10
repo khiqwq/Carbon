@@ -29,7 +29,7 @@ public final class SmokeTest implements ClientModInitializer {
 
     @Override
     public void onInitializeClient() {
-        if (!Boolean.getBoolean("carbon.bench")) ClientTickEvents.END_CLIENT_TICK.register(this::tick);
+        if (!Boolean.getBoolean("carbon.bench") && System.getProperty("carbon.scale") == null) ClientTickEvents.END_CLIENT_TICK.register(this::tick);
     }
 
     private void tick(Minecraft minecraft) {
@@ -125,8 +125,10 @@ public final class SmokeTest implements ClientModInitializer {
 
     private void report(Minecraft minecraft, String name) {
         logger.info("[{}] fps={} entities={} carbon: {}", name, minecraft.getFps(), minecraft.level.getEntityCount(), Carbon.RENDERER.statistics());
-        logger.info("GL33={} GL43={} version={} renderer={}", org.lwjgl.opengl.GL.getCapabilities().OpenGL33, org.lwjgl.opengl.GL.getCapabilities().OpenGL43,
+        var device = com.mojang.blaze3d.systems.RenderSystem.getDevice().getDeviceInfo();
+        if (Carbon.openGl()) logger.info("GL33={} GL43={} version={} renderer={}", org.lwjgl.opengl.GL.getCapabilities().OpenGL33, org.lwjgl.opengl.GL.getCapabilities().OpenGL43,
                 org.lwjgl.opengl.GL11.glGetString(org.lwjgl.opengl.GL11.GL_VERSION), org.lwjgl.opengl.GL11.glGetString(org.lwjgl.opengl.GL11.GL_RENDERER));
+        else logger.info("backend={} device={} driver={}", device.backendName(), device.name(), device.driverInfo());
         for (Object target : new Object[]{Carbon.RENDERER, Carbon.GENERIC, Carbon.SHADOWS, Carbon.IRIS}) {
             StringBuilder state = new StringBuilder(target.getClass().getSimpleName()).append(':');
             for (var field : target.getClass().getDeclaredFields()) {

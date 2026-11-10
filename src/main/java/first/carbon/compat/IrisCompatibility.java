@@ -89,6 +89,8 @@ public final class IrisCompatibility {
     public boolean active() { return active; }
 
     public boolean canInstance() {
+        // Iris 只支持 OpenGL；其他后端下没有 GL 上下文，不能查询 GL 能力
+        if (!Carbon.openGl()) return !active;
         var capabilities = GL.getCapabilities();
         return !active || ready && !blocked && (capabilities.OpenGL43 || capabilities.GL_ARB_shader_storage_buffer_object
                 && capabilities.GL_ARB_program_interface_query && capabilities.GL_ARB_shading_language_420pack);
