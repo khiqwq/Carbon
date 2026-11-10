@@ -574,7 +574,8 @@ public final class DroppedItemBatchRenderer {
         GpuDroppedItemBatch result = null;
         if (model.getClass() == SimpleBakedModel.class && !rejected.contains(model)
                 && !stack.is(Items.TRIDENT) && !stack.is(Items.SPYGLASS)
-                && !(foil && (stack.getItem() == Items.COMPASS || stack.getItem() == Items.CLOCK))) {
+                && !(foil && (stack.getItem() == Items.COMPASS || stack.getItem() == Items.CLOCK))
+                && !(foil && Carbon.Client.IRIS.legacy())) {
             dynamicFoil.computeIfAbsent(stack.getItem().getClass(), type -> {
                 try {
                     return type.getMethod(isFoilName, ItemStack.class).getDeclaringClass() != Item.class;

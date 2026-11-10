@@ -61,6 +61,8 @@ public final class ItemBatchRenderer {
     private Vec3 shadowCamera = Vec3.ZERO;
     private double originX, originY, originZ;
     private boolean world;
+    // 是否处于世界渲染（与 Iris 是否启用无关）；光影启用时界面与手持物品保持原生渲染
+    private boolean levelRendering;
     boolean capturing;
     public int instances;
     public int drawCalls;
@@ -137,6 +139,7 @@ public final class ItemBatchRenderer {
     }
 
     public void beginWorld(Camera camera, Matrix4f view, Matrix4f projection) {
+        levelRendering = true;
         if (!failed && Carbon.CONFIG.enabled.get() && !Carbon.Client.IRIS.active() && GL.getCapabilities().OpenGL33) {
             if (shadows == null) {
                 int vertex = 0, fragment = 0, linked = 0;
@@ -206,11 +209,13 @@ public final class ItemBatchRenderer {
     public void endWorld() {
         flushShadows();
         world = false;
+        levelRendering = false;
     }
 
     public boolean submit(BakedModel model, ItemStack stack, int light, int overlay, PoseStack pose, VertexConsumer vertices) {
         boolean submitted = false;
         if (!capturing && !failed && Carbon.CONFIG.enabled.get() && Carbon.Client.IRIS.canInstance() && !stack.isEmpty()
+                && (!Carbon.Client.IRIS.active() || levelRendering && !Carbon.Client.IRIS.handActive() && !(Carbon.Client.IRIS.legacy() && stack.hasFoil()))
                 && model.getClass() == SimpleBakedModel.class && GL.getCapabilities().OpenGL33) {
             Target first = vertices instanceof Target target ? target : null;
             Target second = null;

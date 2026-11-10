@@ -30,6 +30,8 @@ public final class IrisCompatibility {
     private boolean checked, present, active, blocked, unsupported;
     private MethodHandle packInUse, shadowPass, pipelineGetter, handPass, getEntity, setEntity, getItem, setItem, getBlock, setBlock;
     private Object pipeline;
+    // Iris 1.2.x 的着色器键位于 pipeline.newshader，且没有物品 ID 与半透明实体键
+    private Class<?> shaderKeys;
     private Object settings;
     private Object itemEntityId;
     private Method entityIds;
@@ -65,11 +67,20 @@ public final class IrisCompatibility {
                 Object state = captured.getField("INSTANCE").get(null);
                 getEntity = lookup.unreflect(captured.getMethod("getCurrentRenderedEntity")).bindTo(state);
                 setEntity = lookup.unreflect(captured.getMethod("setCurrentEntity", int.class)).bindTo(state);
-                getItem = lookup.unreflect(captured.getMethod("getCurrentRenderedItem")).bindTo(state);
-                setItem = lookup.unreflect(captured.getMethod("setCurrentRenderedItem", int.class)).bindTo(state);
+                try {
+                    getItem = lookup.unreflect(captured.getMethod("getCurrentRenderedItem")).bindTo(state);
+                    setItem = lookup.unreflect(captured.getMethod("setCurrentRenderedItem", int.class)).bindTo(state);
+                } catch (NoSuchMethodException ignored) {
+                    // Iris 1.2.x 没有物品 ID，光影包中的 currentRenderedItemId 始终为 0
+                    getItem = setItem = null;
+                }
                 getBlock = lookup.unreflect(captured.getMethod("getCurrentRenderedBlockEntity")).bindTo(state);
                 setBlock = lookup.unreflect(captured.getMethod("setCurrentBlockEntity", int.class)).bindTo(state);
-                Class<?> world = Class.forName(namespace + "shaderpack.materialmap.WorldRenderingSettings");
+                Class<?> world;
+                try { world = Class.forName(namespace + "shaderpack.materialmap.WorldRenderingSettings"); }
+                catch (ClassNotFoundException ignored) { world = Class.forName(namespace + "block_rendering.BlockRenderingSettings"); }
+                try { shaderKeys = Class.forName(namespace + "pipeline.programs.ShaderKey"); }
+                catch (ClassNotFoundException ignored) { shaderKeys = Class.forName(namespace + "pipeline.newshader.ShaderKey"); }
                 settings = world.getField("INSTANCE").get(null);
                 entityIds = world.getMethod("getEntityIds");
                 itemEntityId = Class.forName(namespace + "shaderpack.materialmap.NamespacedId").getConstructor(String.class, String.class).newInstance("minecraft", "item");
@@ -127,6 +138,21 @@ public final class IrisCompatibility {
         return shadow;
     }
 
+    // 旧版 Iris（net.coderbot 包名，1.17 的 1.2.x）启用光影时：附魔光效通道的混合与原版不一致，带光效的物品交还原生渲染
+    public boolean legacy() {
+        return active && namespace.startsWith("net.coderbot");
+    }
+
+    // Iris 的手持物品通道写入独立的缓冲，实例化绘制在其中不可见
+    public boolean handActive() {
+        boolean hand = false;
+        if (active && handPass != null) {
+            try { hand = (boolean) handPass.invokeExact(); }
+            catch (Throwable exception) { blocked = true; }
+        }
+        return hand;
+    }
+
     public boolean vanillaShadows() {
         boolean allowed = true;
         if (active && pipeline != null) {
@@ -141,7 +167,7 @@ public final class IrisCompatibility {
         int[] previous = null;
         if (active && !blocked) {
             try {
-                previous = new int[]{(int) getEntity.invokeExact(), (int) getItem.invokeExact(), (int) getBlock.invokeExact()};
+                previous = new int[]{(int) getEntity.invokeExact(), getItem == null ? 0 : (int) getItem.invokeExact(), (int) getBlock.invokeExact()};
                 Object ids = entityIds.invoke(settings);
                 int entity = ids == null ? 0 : ((ToIntFunction<Object>) ids).applyAsInt(itemEntityId);
                 setEntity.invokeExact(entity);
@@ -154,7 +180,7 @@ public final class IrisCompatibility {
         if (previous != null) {
             try {
                 setEntity.invokeExact(previous[0]);
-                setItem.invokeExact(previous[1]);
+                if (setItem != null) setItem.invokeExact(previous[1]);
                 setBlock.invokeExact(previous[2]);
             } catch (Throwable exception) { blocked = true; }
         }
@@ -165,7 +191,7 @@ public final class IrisCompatibility {
         if (active && !blocked) {
             try {
                 value = ((int) getEntity.invokeExact() & 65535L) | (((int) getBlock.invokeExact() & 65535L) << 16)
-                        | (((int) getItem.invokeExact() & 65535L) << 32);
+                        | ((getItem == null ? 0 : (int) getItem.invokeExact() & 65535L) << 32);
             } catch (Throwable exception) { blocked = true; }
         }
         return value;
@@ -216,16 +242,24 @@ public final class IrisCompatibility {
                         || original == RenderType.itemEntityTranslucentCull(net.minecraft.client.renderer.texture.TextureAtlas.LOCATION_BLOCKS)) key = "ENTITIES_TRANSLUCENT";
                 else key = "ENTITIES_CUTOUT_DIFFUSE";
                 Object shaders = pipeline.getClass().getMethod("getShaderMap").invoke(pipeline);
-                Class<?> keys = Class.forName(namespace + "pipeline.programs.ShaderKey");
-                @SuppressWarnings({"unchecked", "rawtypes"})
-                Object shaderKey = Enum.valueOf((Class) keys, key);
-                Object shader = shaders.getClass().getMethod("getShader", keys).invoke(shaders, shaderKey);
+                Object shaderKey = shaderKey(key);
+                Object shader = shaders.getClass().getMethod("getShader", shaderKeys).invoke(shaders, shaderKey);
                 if (shader instanceof ShaderInstance instance) return instance;
             } catch (Throwable exception) {
                 blocked = true;
             }
         }
         return selected;
+    }
+
+    // 旧版 Iris 把半透明实体与掉落物交给 ENTITIES_CUTOUT_DIFFUSE，缺少的键按同样方式回退
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    private Object shaderKey(String key) {
+        try {
+            return Enum.valueOf((Class) shaderKeys, key);
+        } catch (IllegalArgumentException missing) {
+            return Enum.valueOf((Class) shaderKeys, "ENTITIES_CUTOUT_DIFFUSE");
+        }
     }
 
     public boolean usesShader(ShaderInstance shader) {
@@ -336,6 +370,8 @@ public final class IrisCompatibility {
                 Class<?> state = Class.forName((namespace.startsWith("net.coderbot") ? "net.coderbot.batchedentityrendering." : "net.irisshaders.batchedentityrendering.") + "impl.BlendingStateHolder");
                 state.getMethod("setTransparencyType", Class.forName((namespace.startsWith("net.coderbot") ? "net.coderbot.batchedentityrendering." : "net.irisshaders.batchedentityrendering.") + "impl.TransparencyType"))
                         .invoke(this, state.getMethod("getTransparencyType").invoke(wrapped));
+            } catch (NoSuchMethodException ignored) {
+                // Iris 1.2.x 只有 getTransparencyType，按渲染类型名称推断，包装层沿用原名前缀即可
             } catch (ReflectiveOperationException exception) { throw new IllegalStateException(exception); }
         }
 

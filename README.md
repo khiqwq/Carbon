@@ -32,7 +32,7 @@ cacheUpdateBudgetMs = 2.0
 
 ## 光影
 
-Iris 访问集中在 `IrisCompatibility`，未向光影模组注入 Mixin。Iris 1.2.x 缺少实例化所需的内部接口，启用光影包时自动回退原版物品渲染，关闭光影包后恢复实例化。
+Iris 访问集中在 `IrisCompatibility`，未向光影模组注入 Mixin。启用光影包时为 Iris 程序派生实例化变体，世界中的掉落物与标准物品提交继续实例化，沿用光影包的材质、光照与阴影。Iris 1.2.x 没有物品 ID 与半透明实体程序：物品 ID 按 0 处理，半透明物品与 Iris 自身一样使用镂空实体程序。手持物品、界面图标与带附魔光效的物品在光影下保持原生绘制。已验证 Iris 1.2.7 与 BSL v10.1.8。
 
 ## 与 Forge 版的差异
 
@@ -48,7 +48,7 @@ Iris 访问集中在 `IrisCompatibility`，未向光影模组注入 Mixin。Iris
 
 ## 验证与构建
 
-[更新记录](CHANGELOG.md)。使用 Java 21 执行 `gradlew.bat build`，输出 `build/libs/carbon-1.17.1.9-B-fabric.jar`。`gradlew.bat prodClient -PsmokeTest` 以生产环境 Jar 运行冒烟测试，追加 `-Pbare` 时不加载 Sodium 与 Iris。
+[更新记录](CHANGELOG.md)。使用 Java 21 执行 `gradlew.bat build`，输出 `build/libs/carbon-1.17.1.9-B.1-fabric.jar`。`gradlew.bat prodClient -PsmokeTest` 以生产环境 Jar 运行冒烟测试，追加 `-Pbare` 时不加载 Sodium 与 Iris。
 
 ## 分支与致谢
 
