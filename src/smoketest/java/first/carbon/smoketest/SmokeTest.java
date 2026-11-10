@@ -52,7 +52,7 @@ public final class SmokeTest implements ClientModInitializer {
 
     @Override
     public void onInitializeClient() {
-        if (!Boolean.getBoolean("carbon.bench")) ClientTickEvents.END_CLIENT_TICK.register(this::tick);
+        if (!Boolean.getBoolean("carbon.bench") && System.getProperty("carbon.scale") == null) ClientTickEvents.END_CLIENT_TICK.register(this::tick);
     }
 
     private void tick(Minecraft minecraft) {
