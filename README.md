@@ -4,7 +4,7 @@ Minecraft 26.2 / Fabric Loader 0.19.3 及以上（需要 Fabric API）客户端 
 
 ![Carbon](branding/mod-cover.svg)
 
-**下载：** [Modrinth](https://modrinth.com/mod/carbon-for-fabric) · [CurseForge](https://www.curseforge.com/minecraft/mc-mods/carbon-for-fabric) · [GitHub Releases](https://github.com/khiqwq/Carbon/releases)
+**下载：** [Modrinth](https://modrinth.com/mod/carbon-for-fabric) · [CurseForge](https://www.curseforge.com/minecraft/mc-mods/carbon-for-fabric/preview) · [GitHub Releases](https://github.com/khiqwq/Carbon/releases)
 
 缓存重复物品的模型几何，通过 GPU 实例化合并绘制。原生 `ItemFeatureRenderer` 的物品提交保留调用者的变换、光照和叠加参数，覆盖掉落物、手持、界面及其他调用标准接口的渲染。特殊投影光效、自定义材质和需排序的半透明模型保留原生处理。
 
