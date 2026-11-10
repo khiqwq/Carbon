@@ -4,7 +4,7 @@
 
 ![Carbon](branding/mod-cover.svg)
 
-**下载：** [Modrinth](https://modrinth.com/mod/carbon-for-fabric) · [CurseForge](https://www.curseforge.com/minecraft/mc-mods/carbon-for-fabric) · [GitHub Releases](https://github.com/khiqwq/Carbon/releases)
+**下载：** [Modrinth](https://modrinth.com/mod/carbon-for-fabric) · [CurseForge](https://www.curseforge.com/minecraft/mc-mods/carbon-for-fabric/preview) · [GitHub Releases](https://github.com/khiqwq/Carbon/releases)
 
 缓存重复物品的模型几何，通过 GPU 实例化合并绘制。默认使用掉落物专用管线，在 GPU 计算自旋、浮动与缩放，并复用未变化的场景记录；普通附魔光效与原版圆形阴影同样参与实例化。
 
