@@ -1,5 +1,9 @@
 # 更新记录
 
+## 26.2.9-B.1-fabric — 2026-11-10
+
+- 其他模组在原版渲染器中改写掉落物时，掉落物专用管线自动让位，保留其效果：antideath-survival-assistant 的 `disableItemEntityMulPose`、TweakerMore 的 `preciseItemEntityModel`、Meteor Client 的 ItemPhysics 以及隐藏掉落物的 NoRender。对方选项关闭后自动恢复；物品提交仍由通用管线实例化。
+
 ## 26.2.9-B-fabric — 2026-11-10
 
 - 由上游 26.1.2 0.9-B 移植至 Fabric 26.2；对照与已知问题见 [Fabric 移植说明](FABRIC-PORT.md)。

@@ -85,7 +85,8 @@ public final class ItemBatchRenderer {
             irisGeneration = Carbon.IRIS.generation;
         }
         var minecraft = Minecraft.getInstance();
-        boolean requested = Carbon.CONFIG.optimizeDroppedItems.get();
+        // 其他模组改写原版掉落物渲染时让位，保留其效果
+        boolean requested = Carbon.CONFIG.optimizeDroppedItems.get() && !Carbon.DROPPED.overridden();
         boolean physical = requested && Carbon.CONFIG.physicalDroppedItems.get();
         if (physics != physical || dedicated != requested) { clear(); physics = physical; dedicated = requested; }
         Vec3 position = camera.position();
