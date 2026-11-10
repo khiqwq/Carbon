@@ -23,7 +23,7 @@ cacheUpdateBudgetMs = 2.0
 ```
 
 - `enabled`：优化总开关。
-- `optimizeDroppedItems`：默认开启掉落物专用 GPU 管线；关闭后保留原有掉落物变换，通过标准模型提交继续优化。
+- `optimizeDroppedItems`：默认开启掉落物专用 GPU 管线；关闭后保留原有掉落物变换，通过标准模型提交继续优化。检测到其他模组改写掉落物（antideath-survival-assistant 的禁止旋转、TweakerMore 的精确物品模型、Meteor Client 的 ItemPhysics 与隐藏掉落物）时自动让位。
 - `physicalDroppedItems`：默认关闭，需要开启掉落物专用管线；落地姿态收稳后停止派发变换计算。
 - `skipVisibilityChecks`：专用管线默认跳过遮挡与视锥检查，完整提交距离内的普通掉落物；距离限制始终有效。
 
@@ -37,7 +37,7 @@ Iris 检测集中在 `IrisCompatibility`，启用光影包时为 Iris 程序派�
 
 ## 验证与构建
 
-[更新记录](CHANGELOG.md)。使用 Java 21 执行 `gradlew.bat build`，输出 `build/libs/carbon-1.21.11.9-B-fabric.jar`。`gradlew.bat prodClient -PsmokeTest` 以生产环境 Jar 运行冒烟测试；`gradlew.bat benchPack -PbenchDir=<目录>` 在整合包隔离副本中对比帧率（整合包的模组与配置需预先复制到该目录）。
+[更新记录](CHANGELOG.md)。使用 Java 21 执行 `gradlew.bat build`，输出 `build/libs/carbon-1.21.11.9-B.1-fabric.jar`。`gradlew.bat prodClient -PsmokeTest` 以生产环境 Jar 运行冒烟测试；`gradlew.bat benchPack -PbenchDir=<目录>` 在整合包隔离副本中对比帧率（整合包的模组与配置需预先复制到该目录）。
 
 ## 分支与致谢
 

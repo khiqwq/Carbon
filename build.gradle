@@ -67,6 +67,15 @@ tasks.register('prodClient', net.fabricmc.loom.task.prod.ClientProductionRunTask
     mods.from(configurations.productionRuntimeMods)
     if (project.hasProperty('smokeTest')) mods.from(remapSmoketestJar)
     if (project.hasProperty('noTranslucent')) jvmArgs.add('-Dcarbon.smoke.noTranslucent=true')
+    // -PsmokeCompat：依次开启其他模组改写掉落物的选项，确认专用管线让位
+    if (project.hasProperty('smokeCompat')) jvmArgs.add('-Dcarbon.smoke.compat=true')
+    // -PsmokeStress=<秒>：反复切换物理化与总开关，促使 JIT 重新编译绘制路径
+    if (project.hasProperty('smokeStress')) jvmArgs.add('-Dcarbon.smoke.stress=' + findProperty('smokeStress'))
+    // -PextraMods=<目录>：额外加载该目录中的全部 Jar（兼容性测试用）
+    if (project.hasProperty('extraMods')) mods.from(fileTree(file(findProperty('extraMods'))) { include '*.jar' })
+    if (project.hasProperty('prodJvmArgs')) jvmArgs.addAll(findProperty('prodJvmArgs').toString().split(' '))
+    // -PprodJava=25：以其他 Java 版本运行（需 Gradle 能找到对应 JDK，例如 -Porg.gradle.java.installations.paths=<目录>）
+    if (project.hasProperty('prodJava')) javaLauncher = javaToolchains.launcherFor { languageVersion = JavaLanguageVersion.of(findProperty('prodJava').toString().toInteger()) }
     runDir = file('run-prod')
 }
 

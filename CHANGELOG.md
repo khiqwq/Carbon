@@ -1,5 +1,11 @@
 # 更新记录
 
+## 1.21.11.9-B.1-fabric — 2026-11-10
+
+- 其他模组在原版渲染器中改写掉落物时，掉落物专用管线自动让位，保留其效果：antideath-survival-assistant 的 `disableItemEntityMulPose`、TweakerMore 的 `preciseItemEntityModel`、Meteor Client 的 ItemPhysics 以及隐藏掉落物的 NoRender。对方选项关闭后自动恢复；物品提交仍由通用管线实例化。
+- 拆分掉落物绘制方法：Java 25 的 C2 编译器在编译原先的单个方法时会崩溃（压力测试中 3 次有 2 次），Java 21 未复现。
+- `/carbon config` 界面的标题恢复显示。
+
 ## 1.21.11.9-B-fabric — 2026-11-09
 
 - 派生着色器程序仅绑定有效的用户顶点属性，排除 `gl_VertexID` 等内建输入（同步上游 0.9-B）。

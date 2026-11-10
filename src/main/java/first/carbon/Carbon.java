@@ -30,6 +30,7 @@ import static net.fabricmc.fabric.api.client.command.v2.ClientCommandManager.lit
 public final class Carbon implements ClientModInitializer {
     public static final first.carbon.compat.IrisCompatibility IRIS = new first.carbon.compat.IrisCompatibility();
     public static final first.carbon.compat.SodiumCompatibility SODIUM = new first.carbon.compat.SodiumCompatibility();
+    public static final first.carbon.compat.DroppedItemCompatibility DROPPED = new first.carbon.compat.DroppedItemCompatibility();
     public static final first.carbon.client.GenericItemRenderer GENERIC = new first.carbon.client.GenericItemRenderer();
     public static final first.carbon.client.GenericShadowRenderer SHADOWS = new first.carbon.client.GenericShadowRenderer();
     public static final ItemBatchRenderer RENDERER = new ItemBatchRenderer();

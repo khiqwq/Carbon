@@ -25,6 +25,30 @@ public final class SmokeTest implements ClientModInitializer {
     private final Logger logger = LoggerFactory.getLogger("CarbonSmokeTest");
     private int stage;
     private int ticks;
+    private final int stress = Integer.getInteger("carbon.smoke.stress", 0);
+    private final boolean compat = Boolean.getBoolean("carbon.smoke.compat");
+    private int compatIndex;
+    private static final String[][] COMPAT = {
+            {"asa", "io.github.jfglzs.asa.config.Configs$Disables", "DISABLE_ITEM_ENTITY_MULPOSE"},
+            {"tweakermore", "me.fallenbreath.tweakermore.config.TweakerMoreConfigs", "PRECISE_ITEM_ENTITY_MODEL"},
+            {"meteor-client", "meteordevelopment.meteorclient.systems.modules.render.ItemPhysics", null},
+    };
+
+    private void setCompat(String[] target, boolean value) {
+        try {
+            if (target[2] != null) {
+                Object option = Class.forName(target[1]).getField(target[2]).get(null);
+                option.getClass().getMethod("setBooleanValue", boolean.class).invoke(option, value);
+            } else {
+                Class<?> modules = Class.forName("meteordevelopment.meteorclient.systems.modules.Modules");
+                Object module = modules.getMethod("get", Class.class).invoke(modules.getMethod("get").invoke(null), Class.forName(target[1]));
+                if ((boolean) module.getClass().getMethod("isActive").invoke(module) != value) module.getClass().getMethod("toggle").invoke(module);
+            }
+            logger.info("[compat] {} -> {}", target[0], value);
+        } catch (ReflectiveOperationException exception) {
+            logger.error("[compat] unable to set {}", target[0], exception);
+        }
+    }
 
     @Override
     public void onInitializeClient() {
@@ -78,8 +102,44 @@ public final class SmokeTest implements ClientModInitializer {
         if (stage == 2 && ticks == 160) {
             report(minecraft, "default");
             Carbon.CONFIG.physicalDroppedItems.set(true);
-            stage = 3;
+            stage = compat ? 20 : stress > 0 ? 10 : 3;
             ticks = 0;
+        }
+        // 兼容模式：依次开启其他模组改写原版掉落物的选项，确认专用管线让位并截图
+        if (stage == 20) {
+            if (ticks == 1) {
+                while (compatIndex < COMPAT.length && !net.fabricmc.loader.api.FabricLoader.getInstance().isModLoaded(COMPAT[compatIndex][0])) compatIndex++;
+                if (compatIndex == COMPAT.length) {
+                    stage = stress > 0 ? 10 : 3;
+                    ticks = 0;
+                } else setCompat(COMPAT[compatIndex], true);
+            }
+            if (ticks == 80) {
+                report(minecraft, "compat-" + COMPAT[compatIndex][0]);
+                setCompat(COMPAT[compatIndex], false);
+            }
+            if (ticks == 120) {
+                logger.info("[compat-{}-off] carbon: {}", COMPAT[compatIndex][0], Carbon.RENDERER.statistics());
+                compatIndex++;
+                ticks = 0;
+            }
+        }
+        // 压力模式：每 1.5 秒轮换物理化、总开关与掉落物管线，持续指定秒数后回到常规流程
+        if (stage == 10) {
+            if (ticks % 30 == 0) {
+                int step = ticks / 30;
+                Carbon.CONFIG.physicalDroppedItems.set(step % 2 == 0);
+                Carbon.CONFIG.enabled.set(step % 5 != 4);
+                Carbon.CONFIG.optimizeDroppedItems.set(step % 7 != 6);
+            }
+            if (ticks >= stress * 20) {
+                Carbon.CONFIG.enabled.set(true);
+                Carbon.CONFIG.optimizeDroppedItems.set(true);
+                Carbon.CONFIG.physicalDroppedItems.set(true);
+                logger.info("[stress] survived {} s", stress);
+                stage = 3;
+                ticks = 0;
+            }
         }
         if (stage == 3 && ticks == 120) {
             report(minecraft, "physics");

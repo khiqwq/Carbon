@@ -93,7 +93,8 @@ public final class ItemBatchRenderer {
             irisGeneration = Carbon.IRIS.generation;
         }
         var minecraft = Minecraft.getInstance();
-        boolean requested = Carbon.CONFIG.optimizeDroppedItems.get();
+        // 其他模组改写原版掉落物渲染时让位，保留其效果
+        boolean requested = Carbon.CONFIG.optimizeDroppedItems.get() && !Carbon.DROPPED.overridden();
         boolean physical = requested && Carbon.CONFIG.physicalDroppedItems.get();
         if (physics != physical || dedicated != requested) { clear(); physics = physical; dedicated = requested; }
         Vec3 position = camera.position();
@@ -407,61 +408,90 @@ public final class ItemBatchRenderer {
         }
     }
 
+    // 拆成小方法：Java 的 C2 编译器在编译原先单个嵌套循环、多层 try-with-resources 的 flush 时会崩溃。
     public void flush(CameraRenderState state) {
         if (active) {
-            // 没有实例和阴影时跳过状态保存与帧缓冲切换
-            boolean work = shadows != null && shadows.count > 0;
-            for (var bucket : buckets.values()) for (var batch : bucket) work |= batch.count > 0 && !batch.flushed;
             if (Carbon.IRIS.active()) {
                 drawIris(viewRotation, state.pos, false);
-            } else if (work) try (GpuFrame gpuFrame = new GpuFrame(framebuffer)) {
-                for (var bucket : buckets.values()) for (var batch : bucket) if (batch.count > 0 && !batch.flushed) {
-                    Carbon.SODIUM.mark(batch.sprites);
-                    uploadedBytes += batch.upload();
-                    batch.processed = batch.entityBatch && processor != null;
-                    if (batch.processed) processor.prepare(batch, clock);
-                    int drawProgram = batch.entityBatch ? batch.processed ? preparedProgram : entityProgram : program;
-                    uniforms(drawProgram, state);
-                    glUniform1f(glGetUniformLocation(drawProgram, "GroundScaleY"), batch.groundScaleY);
-                    if (batch.physics) {
-                        glUniform3f(glGetUniformLocation(drawProgram, "Center"), batch.center.x, batch.center.y, batch.center.z);
-                        glUniform3f(glGetUniformLocation(drawProgram, "HalfSize"), batch.halfSize.x, batch.halfSize.y, batch.halfSize.z);
-                        glUniform1i(glGetUniformLocation(drawProgram, "Flat"), 1);
-                    }
-                    for (int pass = 0; pass < (batch.foil ? 2 : 1); pass++) {
-                        glUniform1i(glGetUniformLocation(drawProgram, "GlintPass"), pass);
-                        if (pass != 0) {
-                            glEnable(GL_BLEND); glBlendFuncSeparate(GL_SRC_COLOR, GL_ONE, GL_ZERO, GL_ONE);
-                            glDepthMask(false); glDepthFunc(GL_EQUAL);
-                            try (MemoryStack memory = MemoryStack.stackPush()) { glUniformMatrix4fv(glGetUniformLocation(drawProgram, "TextureMat"), false, net.minecraft.client.renderer.rendertype.TextureTransform.GLINT_TEXTURING.getMatrix().get(memory.mallocFloat(16))); }
-                            glUniform1f(glGetUniformLocation(drawProgram, "GlintAlpha"), Minecraft.getInstance().options.glintStrength().get().floatValue());
-                        }
-                        for (var mesh : batch.meshes) {
-                            if (mesh.cull) glEnable(GL_CULL_FACE); else glDisable(GL_CULL_FACE);
-                            gpuFrame.bindTexture(0, pass == 0 ? mesh.texture : net.minecraft.client.renderer.entity.ItemRenderer.ENCHANTED_GLINT_ITEM);
-                            mesh.bind();
-                            glDrawElementsInstanced(GL_TRIANGLES, mesh.indices, GL_UNSIGNED_INT, 0, batch.count);
-                            drawCalls++;
-                        }
-                    }
-                    glDisable(GL_BLEND); glDepthMask(true); glDepthFunc(GL_LEQUAL);
-                    batch.flushed = true;
-                }
-                if (shadows.count > 0) {
-                    uploadedBytes += shadows.draw(state, gpuFrame);
-                    shadowDrawCalls++;
-                }
+            } else if (instances > 0 || shadows != null && shadows.count > 0) {
+                // 没有实例和阴影时跳过状态保存与帧缓冲切换
+                drawFrame(state);
             }
             active = false;
-            var iterator = buckets.values().iterator();
-            while (iterator.hasNext()) {
-                var bucket = iterator.next();
-                bucket.removeIf(batch -> {
-                    if (frame - batch.lastFrame > 300) { batch.close(); return true; }
-                    return false;
-                });
-                if (bucket.isEmpty()) iterator.remove();
+            evictStale();
+        }
+    }
+
+    private void drawFrame(CameraRenderState state) {
+        try (GpuFrame gpuFrame = new GpuFrame(framebuffer)) {
+            for (var bucket : buckets.values()) {
+                for (var batch : bucket) {
+                    if (batch.count > 0 && !batch.flushed) drawBatch(batch, state, gpuFrame);
+                }
             }
+            if (shadows != null && shadows.count > 0) {
+                uploadedBytes += shadows.draw(state, gpuFrame);
+                shadowDrawCalls++;
+            }
+        }
+    }
+
+    private void drawBatch(GpuItemBatch batch, CameraRenderState state, GpuFrame gpuFrame) {
+        Carbon.SODIUM.mark(batch.sprites);
+        uploadedBytes += batch.upload();
+        batch.processed = batch.entityBatch && processor != null;
+        if (batch.processed) processor.prepare(batch, clock);
+        int drawProgram = batch.entityBatch ? batch.processed ? preparedProgram : entityProgram : program;
+        uniforms(drawProgram, state);
+        glUniform1f(glGetUniformLocation(drawProgram, "GroundScaleY"), batch.groundScaleY);
+        if (batch.physics) {
+            glUniform3f(glGetUniformLocation(drawProgram, "Center"), batch.center.x, batch.center.y, batch.center.z);
+            glUniform3f(glGetUniformLocation(drawProgram, "HalfSize"), batch.halfSize.x, batch.halfSize.y, batch.halfSize.z);
+            glUniform1i(glGetUniformLocation(drawProgram, "Flat"), 1);
+        }
+        int passes = batch.foil ? 2 : 1;
+        for (int pass = 0; pass < passes; pass++) {
+            glUniform1i(glGetUniformLocation(drawProgram, "GlintPass"), pass);
+            if (pass != 0) beginGlint(drawProgram);
+            drawMeshes(batch, gpuFrame, pass);
+        }
+        glDisable(GL_BLEND);
+        glDepthMask(true);
+        glDepthFunc(GL_LEQUAL);
+        batch.flushed = true;
+    }
+
+    private void drawMeshes(GpuItemBatch batch, GpuFrame gpuFrame, int pass) {
+        for (var mesh : batch.meshes) {
+            if (mesh.cull) glEnable(GL_CULL_FACE); else glDisable(GL_CULL_FACE);
+            gpuFrame.bindTexture(0, pass == 0 ? mesh.texture : net.minecraft.client.renderer.entity.ItemRenderer.ENCHANTED_GLINT_ITEM);
+            mesh.bind();
+            glDrawElementsInstanced(GL_TRIANGLES, mesh.indices, GL_UNSIGNED_INT, 0, batch.count);
+            drawCalls++;
+        }
+    }
+
+    private static void beginGlint(int drawProgram) {
+        glEnable(GL_BLEND);
+        glBlendFuncSeparate(GL_SRC_COLOR, GL_ONE, GL_ZERO, GL_ONE);
+        glDepthMask(false);
+        glDepthFunc(GL_EQUAL);
+        try (MemoryStack memory = MemoryStack.stackPush()) {
+            glUniformMatrix4fv(glGetUniformLocation(drawProgram, "TextureMat"), false,
+                    net.minecraft.client.renderer.rendertype.TextureTransform.GLINT_TEXTURING.getMatrix().get(memory.mallocFloat(16)));
+        }
+        glUniform1f(glGetUniformLocation(drawProgram, "GlintAlpha"), Minecraft.getInstance().options.glintStrength().get().floatValue());
+    }
+
+    private void evictStale() {
+        var iterator = buckets.values().iterator();
+        while (iterator.hasNext()) {
+            var bucket = iterator.next();
+            bucket.removeIf(batch -> {
+                if (frame - batch.lastFrame > 300) { batch.close(); return true; }
+                return false;
+            });
+            if (bucket.isEmpty()) iterator.remove();
         }
     }
 
