@@ -48,6 +48,7 @@ NeoForge 分支已验证 Iris `1.8.14-beta.1+mc1.21.1` 与 Photon `v1.4`；Fabri
 
 | 分支 | Minecraft | 运行环境 | 许可证 |
 | --- | --- | --- | --- |
+| [`26.2`](https://github.com/khiqwq/Carbon/tree/26.2) | 26.2 | Fabric Loader 0.19.3+，Java 25 | MIT |
 | [`1.21.11`](https://github.com/khiqwq/Carbon/tree/1.21.11) | 1.21.11 | Fabric Loader 0.18+，Java 21 | MIT |
 | [`1.21.1`](https://github.com/khiqwq/Carbon/tree/1.21.1) | 1.21.1 | Fabric Loader 0.16+，Java 21 | MIT |
 | [`1.20.1`](https://github.com/khiqwq/Carbon/tree/1.20.1) | 1.20.1 | Fabric Loader 0.15+，Java 17 | GPL-3.0 |
