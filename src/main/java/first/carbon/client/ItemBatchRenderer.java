@@ -12,9 +12,9 @@ import net.minecraft.client.renderer.culling.Frustum;
 import net.minecraft.client.renderer.entity.ItemEntityRenderer;
 import net.minecraft.client.renderer.entity.state.ItemClusterRenderState;
 import net.minecraft.client.renderer.item.ItemStackRenderState;
-import net.minecraft.client.renderer.state.CameraRenderState;
+import net.minecraft.client.renderer.state.level.CameraRenderState;
 import net.minecraft.core.BlockPos;
-import net.minecraft.client.renderer.LightTexture;
+import net.minecraft.util.LightCoordsUtil;
 import net.minecraft.util.Mth;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.item.ItemEntity;
@@ -36,15 +36,7 @@ public final class ItemBatchRenderer {
     private final Logger logger = LoggerFactory.getLogger("Carbon");
     private final Int2ObjectOpenHashMap<List<GpuItemBatch>> buckets = new Int2ObjectOpenHashMap<>();
     private final IdentityHashMap<Class<?>, Boolean> dynamicFoil = new IdentityHashMap<>();
-    final IdentityHashMap<net.minecraft.client.renderer.texture.SpriteContents, Boolean> opaqueSprites = new IdentityHashMap<>();
-    // Item.isFoil 的运行时名称（生产环境为 intermediary 名）
-    private final String isFoilName = net.fabricmc.loader.api.FabricLoader.getInstance().getMappingResolver()
-            .mapMethodName("intermediary", "net.minecraft.class_1792", "method_7886", "(Lnet/minecraft/class_1799;)Z");
     private final Set<net.minecraft.world.item.Item> rejectedItems = Collections.newSetFromMap(new IdentityHashMap<>());
-    // 1.21.11 的 CameraRenderState 不含矩阵与雾参数，由 LevelRendererMixin 与 FogRendererMixin 每帧记录
-    public final Matrix4f viewRotation = new Matrix4f(), projection = new Matrix4f();
-    public final org.joml.Vector4f fogColor = new org.joml.Vector4f();
-    public float fogStart, fogEnd, renderFogStart, renderFogEnd;
     private final Long2IntOpenHashMap lightCells = new Long2IntOpenHashMap();
     private final BlockPos.MutableBlockPos lightPosition = new BlockPos.MutableBlockPos();
     private final List<Entity> remaining = new ArrayList<>();
@@ -106,7 +98,7 @@ public final class ItemBatchRenderer {
         }
         this.camera = position;
         this.frustum = frustum;
-        visibilityMatrix.set(frustum.matrix);
+        camera.getViewRotationProjectionMatrix(visibilityMatrix);
         this.partialTick = partialTick;
         ticks = (int) (level.getGameTime() % 24000);
         clock = ticks + partialTick;
@@ -116,7 +108,7 @@ public final class ItemBatchRenderer {
         updatedEntities = 0;
         shadowCollected = shadowFlushed = false;
         active = false;
-        if (!failed && Carbon.IRIS.canInstance() && Carbon.CONFIG.enabled.get() && minecraft.getMainRenderTarget().getColorTexture() instanceof GlTexture && GL.getCapabilities().OpenGL33) {
+        if (!failed && Carbon.IRIS.canInstance() && Carbon.CONFIG.enabled.get() && minecraft.gameRenderer.mainRenderTarget().getColorTexture() instanceof GlTexture && GL.getCapabilities().OpenGL33) {
             if (program == 0) {
                 try {
                     program = createProgram("instanced.vsh", "instanced.fsh");
@@ -146,7 +138,7 @@ public final class ItemBatchRenderer {
         reused = active && dedicated && skip == sceneSkip && sceneValid && stationary && !sceneDirty && !blockCacheDirty
                 && (skip || position.equals(sceneCamera) && visibilityMatrix.equals(sceneMatrix))
                 && level.getSkyDarken() == sceneSkyDarken && minecraft.getCameraEntity() == sceneCameraEntity
-                && (sceneTickStable || level.getGameTime() == sceneTick && minecraft.gui.getGuiTicks() == sceneFoilTick)
+                && (sceneTickStable || level.getGameTime() == sceneTick && minecraft.gui.hud.getGuiTicks() == sceneFoilTick)
                 && level.getGameTime() / 24000 == sceneTick / 24000
                 && sceneEntityCount == level.getEntityCount() && Entity.getViewScale() == sceneViewScale
                 && minecraft.options.getEffectiveRenderDistance() == sceneRenderDistance
@@ -216,7 +208,7 @@ public final class ItemBatchRenderer {
             sceneEntityDistance = minecraft.options.entityDistanceScaling().get();
             sceneSkyDarken = level.getSkyDarken();
             sceneTick = level.getGameTime();
-            sceneFoilTick = minecraft.gui.getGuiTicks();
+            sceneFoilTick = minecraft.gui.hud.getGuiTicks();
             sceneEntityCount = level.getEntityCount();
             sceneShadows = renderShadows;
             sceneSkip = skip;
@@ -254,19 +246,19 @@ public final class ItemBatchRenderer {
                         : !dispatcher.shouldRender(item, frustum, camera.x, camera.y, camera.z)) continue;
                 ItemStack stack = item.getItem();
                 EntityCache cache = ((EntityCacheAccess) item).imo$cache();
-                if (cache.generation != generation || (cache.stack != stack || cache.version != ((ComponentVersion) stack.getComponents()).imo$version() || cache.dynamicFoil && cache.foil != ((FoilState) (Object) stack).imo$foil(minecraft.gui.getGuiTicks())) || cache.batch != null && cache.batch.closed) {
+                if (cache.generation != generation || (cache.stack != stack || cache.version != ((ComponentVersion) stack.getComponents()).imo$version() || cache.dynamicFoil && cache.foil != ((FoilState) (Object) stack).imo$foil(minecraft.gui.hud.getGuiTicks())) || cache.batch != null && cache.batch.closed) {
                     cache.generation = generation;
                     cache.stack = stack;
                     cache.version = ((ComponentVersion) stack.getComponents()).imo$version();
-                    cache.foil = ((FoilState) (Object) stack).imo$foil(minecraft.gui.getGuiTicks());
+                    cache.foil = ((FoilState) (Object) stack).imo$foil(minecraft.gui.hud.getGuiTicks());
                     cache.dynamicFoil = !stack.has(net.minecraft.core.component.DataComponents.ENCHANTMENT_GLINT_OVERRIDE) && dynamicFoil.computeIfAbsent(stack.getItem().getClass(), type -> {
-                        try { return type.getMethod(isFoilName, ItemStack.class).getDeclaringClass() != net.minecraft.world.item.Item.class; }
+                        try { return type.getMethod("isFoil", ItemStack.class).getDeclaringClass() != net.minecraft.world.item.Item.class; }
                         catch (ReflectiveOperationException ignored) { return true; }
                     });
                     ItemStackRenderState state = new ItemStackRenderState();
                     minecraft.getItemModelResolver().updateForNonLiving(state, stack, ItemDisplayContext.GROUND, item);
                     var modelId = stack.get(net.minecraft.core.component.DataComponents.ITEM_MODEL);
-                    cache.batch = modelId != null && minecraft.getModelManager().getItemModel(modelId).getClass() == net.minecraft.client.renderer.item.BlockModelWrapper.class
+                    cache.batch = modelId != null && minecraft.getModelManager().getItemModel(modelId).getClass() == net.minecraft.client.renderer.item.CuboidItemModelWrapper.class
                             ? find(stack, state, true) : null;
                 }
                 GpuItemBatch batch = cache.batch;
@@ -278,7 +270,7 @@ public final class ItemBatchRenderer {
                     long cell = lightPosition.asLong();
                     int light = lightCells.get(cell);
                     if (light == -1) {
-                        light = LightTexture.pack(level.getBrightness(LightLayer.BLOCK, lightPosition), level.getBrightness(LightLayer.SKY, lightPosition));
+                        light = LightCoordsUtil.pack(level.getBrightness(LightLayer.BLOCK, lightPosition), level.getBrightness(LightLayer.SKY, lightPosition));
                         lightCells.put(cell, light);
                     }
                     if (((EntityCacheAccess) item).imo$hasFire()) light = (light & 0xFFFF0000) | 240;
@@ -379,7 +371,7 @@ public final class ItemBatchRenderer {
                 Carbon.SODIUM.mark(batch.sprites);
                 uploadedBytes += batch.upload();
                 for (int pass = 0; pass < (batch.foil && !shadow ? 2 : 1); pass++) for (var mesh : batch.meshes) {
-                    var type = pass == 0 ? mesh.type : net.minecraft.client.renderer.entity.ItemRenderer.getFoilRenderTypes(mesh.type, true, true).get(1);
+                    var type = pass == 0 ? mesh.type : GpuItemBatch.foilType(mesh.type);
                     Carbon.IRIS.draw(type, mesh.vertices, mesh.vertexBuffer, mesh.indexBuffer, mesh.format, mesh.indices,
                             batch.count, batch.instanceBuffer, batch.physics ? 4 : 3, offset, clock, batch.groundScaleY, batch.center, batch.halfSize);
                     if (!shadow) drawCalls++;
@@ -407,61 +399,90 @@ public final class ItemBatchRenderer {
         }
     }
 
+    // 拆成小方法：Java 25.0.1（官方启动器为 26.x 提供的运行时）的 C2 在编译原先单个嵌套循环、多层 try-with-resources 的 flush 时会崩溃。
     public void flush(CameraRenderState state) {
         if (active) {
-            // 没有实例和阴影时跳过状态保存与帧缓冲切换
-            boolean work = shadows != null && shadows.count > 0;
-            for (var bucket : buckets.values()) for (var batch : bucket) work |= batch.count > 0 && !batch.flushed;
             if (Carbon.IRIS.active()) {
-                drawIris(viewRotation, state.pos, false);
-            } else if (work) try (GpuFrame gpuFrame = new GpuFrame(framebuffer)) {
-                for (var bucket : buckets.values()) for (var batch : bucket) if (batch.count > 0 && !batch.flushed) {
-                    Carbon.SODIUM.mark(batch.sprites);
-                    uploadedBytes += batch.upload();
-                    batch.processed = batch.entityBatch && processor != null;
-                    if (batch.processed) processor.prepare(batch, clock);
-                    int drawProgram = batch.entityBatch ? batch.processed ? preparedProgram : entityProgram : program;
-                    uniforms(drawProgram, state);
-                    glUniform1f(glGetUniformLocation(drawProgram, "GroundScaleY"), batch.groundScaleY);
-                    if (batch.physics) {
-                        glUniform3f(glGetUniformLocation(drawProgram, "Center"), batch.center.x, batch.center.y, batch.center.z);
-                        glUniform3f(glGetUniformLocation(drawProgram, "HalfSize"), batch.halfSize.x, batch.halfSize.y, batch.halfSize.z);
-                        glUniform1i(glGetUniformLocation(drawProgram, "Flat"), 1);
-                    }
-                    for (int pass = 0; pass < (batch.foil ? 2 : 1); pass++) {
-                        glUniform1i(glGetUniformLocation(drawProgram, "GlintPass"), pass);
-                        if (pass != 0) {
-                            glEnable(GL_BLEND); glBlendFuncSeparate(GL_SRC_COLOR, GL_ONE, GL_ZERO, GL_ONE);
-                            glDepthMask(false); glDepthFunc(GL_EQUAL);
-                            try (MemoryStack memory = MemoryStack.stackPush()) { glUniformMatrix4fv(glGetUniformLocation(drawProgram, "TextureMat"), false, net.minecraft.client.renderer.rendertype.TextureTransform.GLINT_TEXTURING.getMatrix().get(memory.mallocFloat(16))); }
-                            glUniform1f(glGetUniformLocation(drawProgram, "GlintAlpha"), Minecraft.getInstance().options.glintStrength().get().floatValue());
-                        }
-                        for (var mesh : batch.meshes) {
-                            if (mesh.cull) glEnable(GL_CULL_FACE); else glDisable(GL_CULL_FACE);
-                            gpuFrame.bindTexture(0, pass == 0 ? mesh.texture : net.minecraft.client.renderer.entity.ItemRenderer.ENCHANTED_GLINT_ITEM);
-                            mesh.bind();
-                            glDrawElementsInstanced(GL_TRIANGLES, mesh.indices, GL_UNSIGNED_INT, 0, batch.count);
-                            drawCalls++;
-                        }
-                    }
-                    glDisable(GL_BLEND); glDepthMask(true); glDepthFunc(GL_LEQUAL);
-                    batch.flushed = true;
-                }
-                if (shadows.count > 0) {
-                    uploadedBytes += shadows.draw(state, gpuFrame);
-                    shadowDrawCalls++;
-                }
+                drawIris(state.viewRotationMatrix, state.pos, false);
+            } else if (instances > 0 || shadows != null && shadows.count > 0) {
+                // 没有实例和阴影时跳过状态保存与帧缓冲切换
+                drawFrame(state);
             }
             active = false;
-            var iterator = buckets.values().iterator();
-            while (iterator.hasNext()) {
-                var bucket = iterator.next();
-                bucket.removeIf(batch -> {
-                    if (frame - batch.lastFrame > 300) { batch.close(); return true; }
-                    return false;
-                });
-                if (bucket.isEmpty()) iterator.remove();
+            evictStale();
+        }
+    }
+
+    private void drawFrame(CameraRenderState state) {
+        try (GpuFrame gpuFrame = new GpuFrame(framebuffer)) {
+            for (var bucket : buckets.values()) {
+                for (var batch : bucket) {
+                    if (batch.count > 0 && !batch.flushed) drawBatch(batch, state, gpuFrame);
+                }
             }
+            if (shadows != null && shadows.count > 0) {
+                uploadedBytes += shadows.draw(state, gpuFrame);
+                shadowDrawCalls++;
+            }
+        }
+    }
+
+    private void drawBatch(GpuItemBatch batch, CameraRenderState state, GpuFrame gpuFrame) {
+        Carbon.SODIUM.mark(batch.sprites);
+        uploadedBytes += batch.upload();
+        batch.processed = batch.entityBatch && processor != null;
+        if (batch.processed) processor.prepare(batch, clock);
+        int drawProgram = batch.entityBatch ? batch.processed ? preparedProgram : entityProgram : program;
+        uniforms(drawProgram, state);
+        glUniform1f(glGetUniformLocation(drawProgram, "GroundScaleY"), batch.groundScaleY);
+        if (batch.physics) {
+            glUniform3f(glGetUniformLocation(drawProgram, "Center"), batch.center.x, batch.center.y, batch.center.z);
+            glUniform3f(glGetUniformLocation(drawProgram, "HalfSize"), batch.halfSize.x, batch.halfSize.y, batch.halfSize.z);
+            glUniform1i(glGetUniformLocation(drawProgram, "Flat"), 1);
+        }
+        int passes = batch.foil ? 2 : 1;
+        for (int pass = 0; pass < passes; pass++) {
+            glUniform1i(glGetUniformLocation(drawProgram, "GlintPass"), pass);
+            if (pass != 0) beginGlint(drawProgram);
+            drawMeshes(batch, gpuFrame, pass);
+        }
+        glDisable(GL_BLEND);
+        glDepthMask(true);
+        glDepthFunc(GL_GEQUAL);
+        batch.flushed = true;
+    }
+
+    private void drawMeshes(GpuItemBatch batch, GpuFrame gpuFrame, int pass) {
+        for (var mesh : batch.meshes) {
+            if (mesh.cull) glEnable(GL_CULL_FACE); else glDisable(GL_CULL_FACE);
+            gpuFrame.bindTexture(0, pass == 0 ? mesh.texture : net.minecraft.client.renderer.feature.ItemFeatureRenderer.ENCHANTED_GLINT_ITEM);
+            mesh.bind();
+            glDrawElementsInstanced(GL_TRIANGLES, mesh.indices, GL_UNSIGNED_INT, 0, batch.count);
+            drawCalls++;
+        }
+    }
+
+    private static void beginGlint(int drawProgram) {
+        glEnable(GL_BLEND);
+        glBlendFuncSeparate(GL_SRC_COLOR, GL_ONE, GL_ZERO, GL_ONE);
+        glDepthMask(false);
+        glDepthFunc(GL_EQUAL);
+        try (MemoryStack memory = MemoryStack.stackPush()) {
+            glUniformMatrix4fv(glGetUniformLocation(drawProgram, "TextureMat"), false,
+                    net.minecraft.client.renderer.rendertype.TextureTransform.GLINT_TEXTURING.createMatrix().get(memory.mallocFloat(16)));
+        }
+        glUniform1f(glGetUniformLocation(drawProgram, "GlintAlpha"), Minecraft.getInstance().options.glintStrength().get().floatValue());
+    }
+
+    private void evictStale() {
+        var iterator = buckets.values().iterator();
+        while (iterator.hasNext()) {
+            var bucket = iterator.next();
+            bucket.removeIf(batch -> {
+                if (frame - batch.lastFrame > 300) { batch.close(); return true; }
+                return false;
+            });
+            if (bucket.isEmpty()) iterator.remove();
         }
     }
 
@@ -469,8 +490,8 @@ public final class ItemBatchRenderer {
         var renderer = Carbon.RENDERER;
         glUseProgram(program);
         try (MemoryStack memory = MemoryStack.stackPush()) {
-            glUniformMatrix4fv(glGetUniformLocation(program, "View"), false, renderer.viewRotation.get(memory.mallocFloat(16)));
-            glUniformMatrix4fv(glGetUniformLocation(program, "Projection"), false, renderer.projection.get(memory.mallocFloat(16)));
+            glUniformMatrix4fv(glGetUniformLocation(program, "View"), false, state.viewRotationMatrix.get(memory.mallocFloat(16)));
+            glUniformMatrix4fv(glGetUniformLocation(program, "Projection"), false, state.projectionMatrix.get(memory.mallocFloat(16)));
         }
         glUniform3f(glGetUniformLocation(program, "Camera"), (float) (state.pos.x - renderer.originX), (float) (state.pos.y - renderer.originY), (float) (state.pos.z - renderer.originZ));
         glUniform1f(glGetUniformLocation(program, "Clock"), renderer.clock);
@@ -478,11 +499,12 @@ public final class ItemBatchRenderer {
         glUniform1i(glGetUniformLocation(program, "Sampler0"), 0);
         glUniform1i(glGetUniformLocation(program, "Sampler2"), 2);
         glUniform4f(glGetUniformLocation(program, "ColorModulator"), 1, 1, 1, 1);
-        glUniform4f(glGetUniformLocation(program, "FogColor"), renderer.fogColor.x, renderer.fogColor.y, renderer.fogColor.z, renderer.fogColor.w);
-        glUniform1f(glGetUniformLocation(program, "FogStart"), renderer.fogStart);
-        glUniform1f(glGetUniformLocation(program, "FogEnd"), renderer.fogEnd);
-        glUniform1f(glGetUniformLocation(program, "RenderFogStart"), renderer.renderFogStart);
-        glUniform1f(glGetUniformLocation(program, "RenderFogEnd"), renderer.renderFogEnd);
+        var fog = state.fogData;
+        glUniform4f(glGetUniformLocation(program, "FogColor"), fog.color.x, fog.color.y, fog.color.z, fog.color.w);
+        glUniform1f(glGetUniformLocation(program, "FogStart"), fog.environmentalStart);
+        glUniform1f(glGetUniformLocation(program, "FogEnd"), fog.environmentalEnd);
+        glUniform1f(glGetUniformLocation(program, "RenderFogStart"), fog.renderDistanceStart);
+        glUniform1f(glGetUniformLocation(program, "RenderFogEnd"), fog.renderDistanceEnd);
         glUniform1i(glGetUniformLocation(program, "FogShape"), 0);
     }
 
@@ -531,7 +553,6 @@ public final class ItemBatchRenderer {
         remainingItems.clear();
         updateRemainingItems.clear();
         lightCells.clear();
-        opaqueSprites.clear();
         rejectedItems.clear();
         dynamicFoil.clear();
         updating = false;

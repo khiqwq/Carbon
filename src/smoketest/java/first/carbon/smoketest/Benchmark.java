@@ -3,7 +3,7 @@ package first.carbon.smoketest;
 import first.carbon.Carbon;
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
-import net.fabricmc.fabric.api.client.rendering.v1.world.WorldRenderEvents;
+import net.fabricmc.fabric.api.client.rendering.v1.level.LevelRenderEvents;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.Screenshot;
 import net.minecraft.core.registries.Registries;
@@ -41,7 +41,7 @@ public final class Benchmark implements ClientModInitializer {
     public void onInitializeClient() {
         if (Boolean.getBoolean("carbon.bench")) {
             ClientTickEvents.END_CLIENT_TICK.register(this::tick);
-            WorldRenderEvents.END_MAIN.register(context -> frame());
+            LevelRenderEvents.END_MAIN.register(context -> frame());
         }
     }
 
@@ -53,28 +53,27 @@ public final class Benchmark implements ClientModInitializer {
 
     private void tick(Minecraft minecraft) {
         ticks++;
-        if (stage == 0 && ticks > 40 && minecraft.getOverlay() == null && minecraft.level == null && minecraft.screen != null) {
+        if (stage == 0 && ticks > 40 && minecraft.gui.overlay() == null && minecraft.level == null && minecraft.gui.screen() != null) {
             stage = 1;
             String name = "carbon-bench-" + System.currentTimeMillis();
-            GameRules rules = new GameRules(net.minecraft.world.flag.FeatureFlags.DEFAULT_FLAGS);
-            rules.set(GameRules.ADVANCE_TIME, false, null);
-            rules.set(GameRules.ADVANCE_WEATHER, false, null);
-            rules.set(GameRules.SPAWN_MOBS, false, null);
-            LevelSettings settings = new LevelSettings(name, GameType.CREATIVE, false, Difficulty.PEACEFUL, true, rules, WorldDataConfiguration.DEFAULT);
+            LevelSettings settings = new LevelSettings(name, GameType.CREATIVE, new LevelSettings.DifficultySettings(Difficulty.PEACEFUL, false, false), true, WorldDataConfiguration.DEFAULT);
             minecraft.createWorldOpenFlows().createFreshLevel(name, settings, new WorldOptions(1L, true, false),
                     registries -> registries.lookupOrThrow(Registries.WORLD_PRESET).getOrThrow(WorldPresets.NORMAL).value().createWorldDimensions(),
                     new net.minecraft.client.gui.screens.TitleScreen());
         }
-        if (stage == 1 && minecraft.player != null && minecraft.getSingleplayerServer() != null && minecraft.screen == null) {
+        if (stage == 1 && minecraft.player != null && minecraft.getSingleplayerServer() != null && minecraft.gui.screen() == null) {
             stage = 2;
             ticks = 0;
             minecraft.options.framerateLimit().set(Integer.getInteger("carbon.bench.fps", 260));
             minecraft.options.enableVsync().set(false);
-            minecraft.getWindow().updateVsync(false);
             var server = minecraft.getSingleplayerServer();
             server.execute(() -> {
                 ServerLevel level = server.overworld();
-                level.setDayTime(6000);
+                var rules = level.getGameRules();
+                rules.set(GameRules.ADVANCE_TIME, false, server);
+                rules.set(GameRules.ADVANCE_WEATHER, false, server);
+                rules.set(GameRules.SPAWN_MOBS, false, server);
+                server.getCommands().performPrefixedCommand(server.createCommandSourceStack(), "time set 6000");
                 var player = server.getPlayerList().getPlayers().getFirst();
                 player.getAbilities().flying = true;
                 player.onUpdateAbilities();
@@ -157,7 +156,7 @@ public final class Benchmark implements ClientModInitializer {
         logger.info("BENCH {} enabled={} frames={} avgFps={} onePercentLow={} stalls50={} maxMs={} gcPauses={} gcMs={} entities={} carbon: {}", phases[phase], Carbon.CONFIG.enabled.get(), frames,
                 String.format("%.1f", frames / elapsed), String.format("%.1f", low), stalls, String.format("%.1f", frames == 0 ? 0 : sorted[frames - 1] / 1e6),
                 gc[0] - gcStart[0], gc[1] - gcStart[1], minecraft.level.getEntityCount(), Carbon.RENDERER.statistics());
-        Screenshot.grab(minecraft.gameDirectory, "bench-" + phases[phase] + ".png", minecraft.getMainRenderTarget(), 1, message -> { });
+        Screenshot.grab(minecraft.gameDirectory, "bench-" + phases[phase] + ".png", minecraft.gameRenderer.mainRenderTarget(), 1, message -> { });
     }
 
     private void spawnItems(Minecraft minecraft) {

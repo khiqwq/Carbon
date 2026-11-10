@@ -4,12 +4,10 @@ import com.mojang.blaze3d.vertex.*;
 import com.mojang.blaze3d.buffers.GpuBuffer;
 import com.mojang.blaze3d.systems.RenderSystem;
 import first.carbon.Carbon;
-import net.minecraft.client.renderer.Sheets;
 import net.minecraft.client.renderer.SubmitNodeCollector;
-import net.minecraft.client.renderer.rendertype.RenderType;
 import net.minecraft.client.renderer.item.ItemStackRenderState;
 import net.minecraft.client.renderer.texture.OverlayTexture;
-import net.minecraft.client.renderer.block.model.BakedQuad;
+import net.minecraft.client.resources.model.geometry.BakedQuad;
 import net.minecraft.resources.Identifier;
 import net.minecraft.util.RandomSource;
 import net.minecraft.world.item.ItemStack;
@@ -54,7 +52,14 @@ final class GpuItemBatch implements AutoCloseable {
     boolean processed;
     int retainedCount;
 
-    GpuItemBatch(ItemStack stack, ItemStackRenderState state, ItemBatchRenderer renderer, boolean entityBatch, net.minecraft.client.renderer.SubmitNodeStorage.ItemSubmit submit) {
+    // 与 ItemFeatureRenderer.getFoilBuffer 一致：光影透明（Fabulous）时物品实体目标使用半透明光效
+    static net.minecraft.client.renderer.rendertype.RenderType foilType(net.minecraft.client.renderer.rendertype.RenderType type) {
+        return net.minecraft.client.Minecraft.getInstance().gameRenderer.gameRenderState().useShaderTransparency()
+                && type.outputTarget() == net.minecraft.client.renderer.rendertype.OutputTarget.ITEM_ENTITY_TARGET
+                ? net.minecraft.client.renderer.rendertype.RenderTypes.glintTranslucent() : net.minecraft.client.renderer.rendertype.RenderTypes.glint();
+    }
+
+    GpuItemBatch(ItemStack stack, ItemStackRenderState state, ItemBatchRenderer renderer, boolean entityBatch, net.minecraft.client.renderer.feature.ItemFeatureRenderer.Submit submit) {
         this.stack = stack.copy();
         this.model = List.copyOf(((ItemBatchRenderer.ItemStateAccess) state).imo$identity());
         this.entityBatch = entityBatch;
@@ -76,57 +81,44 @@ final class GpuItemBatch implements AutoCloseable {
         int vao = glGetInteger(GL_VERTEX_ARRAY_BINDING), buffer = glGetInteger(GL_ARRAY_BUFFER_BINDING);
         Map<Material, ByteBufferBuilder> allocators = new LinkedHashMap<>();
         Map<Material, BufferBuilder> builders = new LinkedHashMap<>();
+        QuadInstance instance = new QuadInstance();
         org.joml.Vector3f minimum = new org.joml.Vector3f(Float.POSITIVE_INFINITY), maximum = new org.joml.Vector3f(Float.NEGATIVE_INFINITY);
         renderer.capturing = true;
         int[] captured = entityBatch ? Carbon.IRIS.capture(null) : null;
         try {
             SubmitNodeCollector collector = (SubmitNodeCollector) Proxy.newProxyInstance(SubmitNodeCollector.class.getClassLoader(), new Class<?>[]{SubmitNodeCollector.class}, (proxy, method, args) -> {
-                // 生产环境方法名为 intermediary 名，按签名识别 order 与 submitItem
-                var parameters = method.getParameterTypes();
-                if (parameters.length == 1 && parameters[0] == int.class && method.getReturnType().isInstance(proxy)) return proxy;
-                if (parameters.length != 9 || parameters[7] != RenderType.class || parameters[6] != List.class
-                        || args[8] == ItemStackRenderState.FoilType.SPECIAL || (int) args[4] != 0) {
+                if (method.getName().equals("order")) return proxy;
+                if (!method.getName().equals("submitItem") || args[7] == ItemStackRenderState.FoilType.SPECIAL || (int) args[4] != 0) {
                     throw new IllegalArgumentException("Special item submission requires vanilla rendering");
                 }
-                foil |= args[8] == ItemStackRenderState.FoilType.STANDARD;
+                foil |= args[7] == ItemStackRenderState.FoilType.STANDARD;
                 PoseStack.Pose pose = ((PoseStack) args[0]).last();
                 int[] tints = (int[]) args[5];
-                RenderType type = (RenderType) args[7];
-                boolean translucent = type == Sheets.translucentItemSheet() || type == Sheets.translucentBlockItemSheet();
-                if (!translucent && type != Sheets.cutoutBlockSheet() && type != Sheets.solidBlockSheet()) {
-                    throw new IllegalArgumentException("Custom item render type");
-                }
                 for (BakedQuad quad : (List<BakedQuad>) args[6]) {
-                    var sprite = quad.sprite();
-                    if (!sprites.contains(sprite)) sprites.add(sprite);
-                    // 原版普通物品使用带混合的半透明图集，仅二值透明度贴图可按镂空实例化
-                    if (translucent && !renderer.opaqueSprites.computeIfAbsent(sprite.contents(), contents -> {
-                        var image = contents.originalImage;
-                        boolean binary = true;
-                        if (image.format().hasAlpha()) {
-                            for (int y = 0; y < image.getHeight() && binary; y++) {
-                                for (int x = 0; x < image.getWidth() && binary; x++) {
-                                    int alpha = image.getPixel(x, y) >>> 24;
-                                    binary = alpha == 0 || alpha == 255;
-                                }
-                            }
-                        }
-                        return binary;
-                    })) throw new IllegalArgumentException("Translucent pixels require vanilla sorting");
-                    Material key = new Material(sprite.atlasLocation(), type.pipeline().isCull(), Carbon.IRIS.active() ? type : null);
+                    var material = quad.materialInfo();
+                    if (!sprites.contains(material.sprite())) sprites.add(material.sprite());
+                    if (material.itemRenderType().hasBlending()) throw new IllegalArgumentException("Translucent material");
+                    var pipeline = material.itemRenderType().pipeline();
+                    String vertexShader = pipeline.getVertexShader().toString();
+                    if (!vertexShader.equals("minecraft:core/item")
+                            || !pipeline.getFragmentShader().equals(Identifier.withDefaultNamespace("core/item"))) {
+                        throw new IllegalArgumentException("Custom item shader");
+                    }
+                    Material key = new Material(material.sprite().atlasLocation(), pipeline.isCull(), Carbon.IRIS.active() ? material.itemRenderType() : null);
                     BufferBuilder builder = builders.computeIfAbsent(key, ignored -> {
                         ByteBufferBuilder allocator = new ByteBufferBuilder(4096);
                         allocators.put(key, allocator);
-                        return new BufferBuilder(allocator, VertexFormat.Mode.QUADS, DefaultVertexFormat.NEW_ENTITY);
+                        return new BufferBuilder(allocator, com.mojang.blaze3d.PrimitiveTopology.QUADS, DefaultVertexFormat.ENTITY);
                     });
-                    int color = quad.tintIndex() >= 0 && quad.tintIndex() < tints.length ? tints[quad.tintIndex()] : -1;
-                    builder.putBulkData(pose, quad, (color >> 16 & 255) / 255f, (color >> 8 & 255) / 255f, (color & 255) / 255f, (color >>> 24) / 255f,
-                            0, Carbon.IRIS.active() ? OverlayTexture.NO_OVERLAY : 65537);
+                    instance.setColor(material.tintIndex() >= 0 && material.tintIndex() < tints.length ? tints[material.tintIndex()] : -1);
+                    instance.setLightCoords(0);
+                    instance.setOverlayCoords(Carbon.IRIS.active() ? OverlayTexture.NO_OVERLAY : 65537);
+                    builder.putBakedQuad(pose, quad, instance);
                 }
                 return null;
             });
             if (submit == null) state.submit(new PoseStack(), collector, 0, OverlayTexture.NO_OVERLAY, 0);
-            else collector.submitItem(new PoseStack(), submit.displayContext(), 0, OverlayTexture.NO_OVERLAY, 0, submit.tintLayers(), submit.quads(), submit.renderType(), submit.foilType());
+            else collector.submitItem(new PoseStack(), submit.displayContext(), 0, OverlayTexture.NO_OVERLAY, 0, submit.tintLayers(), submit.quads(), submit.foilType());
             for (var entry : builders.entrySet()) {
                 try (MeshData mesh = entry.getValue().build()) {
                     if (mesh != null) {

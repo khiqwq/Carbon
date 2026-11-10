@@ -1,7 +1,7 @@
 package first.carbon.client;
 
 import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap;
-import net.minecraft.client.renderer.LightTexture;
+import net.minecraft.client.renderer.Lightmap;
 import net.minecraft.core.BlockPos;
 import net.minecraft.resources.Identifier;
 import net.minecraft.util.Mth;
@@ -80,7 +80,7 @@ final class GpuShadowBatch implements AutoCloseable {
                                     position.setY(by);
                                     int brightness = level.getMaxLocalRawBrightness(position);
                                     if (brightness > 3) {
-                                        receiver = new Receiver(bounds, LightTexture.getBrightness(level.dimensionType(), brightness));
+                                        receiver = new Receiver(bounds, Lightmap.getBrightness(level.dimensionType(), brightness));
                                     }
                                 }
                             }
@@ -129,7 +129,7 @@ final class GpuShadowBatch implements AutoCloseable {
         dirty = true;
     }
 
-    long draw(net.minecraft.client.renderer.state.CameraRenderState cameraState, GpuFrame frame) {
+    long draw(net.minecraft.client.renderer.state.level.CameraRenderState cameraState, GpuFrame frame) {
         long uploaded = 0;
         if (count > 0 && !flushed) {
             glBindBuffer(GL_ARRAY_BUFFER, buffer);

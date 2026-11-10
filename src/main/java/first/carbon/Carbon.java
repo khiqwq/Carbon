@@ -6,14 +6,13 @@ import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.command.v2.ClientCommandRegistrationCallback;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientLifecycleEvents;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents;
-import net.fabricmc.fabric.api.client.rendering.v1.world.WorldRenderEvents;
-import net.fabricmc.fabric.api.resource.ResourceManagerHelper;
-import net.fabricmc.fabric.api.resource.SimpleSynchronousResourceReloadListener;
+import net.fabricmc.fabric.api.client.rendering.v1.level.LevelRenderEvents;
+import net.fabricmc.fabric.api.resource.v1.ResourceLoader;
 import net.fabricmc.loader.api.FabricLoader;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.Identifier;
 import net.minecraft.server.packs.PackType;
-import net.minecraft.server.packs.resources.ResourceManager;
+import net.minecraft.server.packs.resources.ResourceManagerReloadListener;
 import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
@@ -24,8 +23,8 @@ import java.util.List;
 import java.util.Locale;
 import java.util.function.Function;
 
-import static net.fabricmc.fabric.api.client.command.v2.ClientCommandManager.argument;
-import static net.fabricmc.fabric.api.client.command.v2.ClientCommandManager.literal;
+import static net.fabricmc.fabric.api.client.command.v2.ClientCommands.argument;
+import static net.fabricmc.fabric.api.client.command.v2.ClientCommands.literal;
 
 public final class Carbon implements ClientModInitializer {
     public static final first.carbon.compat.IrisCompatibility IRIS = new first.carbon.compat.IrisCompatibility();
@@ -46,27 +45,18 @@ public final class Carbon implements ClientModInitializer {
             }
         }
         CONFIG.load();
-        ResourceManagerHelper.get(PackType.CLIENT_RESOURCES).registerReloadListener(new SimpleSynchronousResourceReloadListener() {
-            @Override
-            public Identifier getFabricId() {
-                return Identifier.fromNamespaceAndPath("carbon", "meshes");
-            }
-
-            @Override
-            public void onResourceManagerReload(ResourceManager manager) {
-                invalidate();
-            }
-        });
+        ResourceLoader.get(PackType.CLIENT_RESOURCES).registerReloadListener(Identifier.fromNamespaceAndPath("carbon", "meshes"),
+                (ResourceManagerReloadListener) manager -> invalidate());
         ClientPlayConnectionEvents.DISCONNECT.register((handler, client) -> invalidate());
-        // NeoForge 的 AfterOpaqueFeatures：实体特性与不透明批次提交之后
-        WorldRenderEvents.AFTER_ENTITIES.register(context -> RENDERER.flush(context.worldState().cameraRenderState));
+        // 对应 NeoForge 的 AfterOpaqueFeatures：不透明特性批次执行之后
+        LevelRenderEvents.AFTER_SOLID_FEATURES.register(context -> RENDERER.flush(context.levelState().cameraRenderState));
         ClientLifecycleEvents.CLIENT_STOPPING.register(client -> invalidate());
         ClientCommandRegistrationCallback.EVENT.register((dispatcher, registry) -> dispatcher.register(
                 literal("carbon")
                         .then(literal("config").executes(context -> {
                             // 聊天框在命令返回后才关闭，排到下一轮任务再打开。
                             var minecraft = net.minecraft.client.Minecraft.getInstance();
-                            minecraft.schedule(() -> minecraft.setScreen(new first.carbon.client.ConfigScreen(null)));
+                            minecraft.schedule(() -> minecraft.gui.setScreen(new first.carbon.client.ConfigScreen(null)));
                             return 1;
                         }))
                         .then(literal("enabled").then(argument("enabled", BoolArgumentType.bool()).executes(context -> {

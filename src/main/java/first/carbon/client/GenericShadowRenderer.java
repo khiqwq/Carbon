@@ -2,7 +2,7 @@ package first.carbon.client;
 
 import com.mojang.blaze3d.systems.RenderSystem;
 import first.carbon.Carbon;
-import net.minecraft.client.renderer.SubmitNodeStorage;
+import net.minecraft.client.renderer.feature.ShadowFeatureRenderer;
 import net.minecraft.resources.Identifier;
 import org.lwjgl.system.MemoryStack;
 import org.lwjgl.system.MemoryUtil;
@@ -14,16 +14,28 @@ import java.util.List;
 import static org.lwjgl.opengl.GL33.*;
 
 public final class GenericShadowRenderer {
-    private final List<SubmitNodeStorage.ShadowSubmit> remaining = new ArrayList<>();
+    private int depth;
+    private boolean drawn;
     private ByteBuffer data, previous;
     private int count, capacity, uploadedCount, gpuCapacity, program, vao, buffer, framebuffer;
     private boolean failed;
     public long totalInstances;
 
-    public List<SubmitNodeStorage.ShadowSubmit> collect(List<SubmitNodeStorage.ShadowSubmit> submissions) {
-        count = 0;
-        if (failed || !Carbon.CONFIG.enabled.get() || Carbon.IRIS.active() || RenderSystem.getProjectionMatrixBuffer() == null
-                || !(net.minecraft.client.Minecraft.getInstance().getMainRenderTarget().getColorTexture() instanceof com.mojang.blaze3d.opengl.GlTexture)
+    // 与物品管线相同，只在最外层特性帧内接管；同一帧的多个阴影分组累积后在首个分组执行时绘制。
+    public void beginFrame() {
+        if (depth++ == 0) {
+            count = 0;
+            drawn = false;
+        }
+    }
+
+    public void endFrame() {
+        if (depth > 0) depth--;
+    }
+
+    public List<ShadowFeatureRenderer.Submit> collect(List<ShadowFeatureRenderer.Submit> submissions) {
+        if (depth != 1 || failed || !Carbon.CONFIG.enabled.get() || Carbon.IRIS.active() || RenderSystem.getProjectionMatrixBuffer() == null
+                || !(net.minecraft.client.Minecraft.getInstance().gameRenderer.mainRenderTarget().getColorTexture() instanceof com.mojang.blaze3d.opengl.GlTexture)
                 || RenderSystem.getShaderFog() == null || !org.lwjgl.opengl.GL.getCapabilities().OpenGL33) return submissions;
         if (program == 0 && submissions.stream().anyMatch(submit -> submit.radius() == 0.15f)) {
             int oldVao = glGetInteger(GL_VERTEX_ARRAY_BINDING), oldBuffer = glGetInteger(GL_ARRAY_BUFFER_BINDING);
@@ -43,7 +55,7 @@ public final class GenericShadowRenderer {
                 return submissions;
             } finally { glBindVertexArray(oldVao); glBindBuffer(GL_ARRAY_BUFFER, oldBuffer); }
         }
-        remaining.clear();
+        List<ShadowFeatureRenderer.Submit> remaining = new ArrayList<>(submissions.size());
         for (var submit : submissions) {
             if (submit.radius() != 0.15f) {
                 remaining.add(submit);
@@ -72,7 +84,8 @@ public final class GenericShadowRenderer {
     }
 
     public void flush() {
-        if (count > 0) {
+        if (depth == 1 && count > 0 && !drawn) {
+            drawn = true;
             int oldVao = glGetInteger(GL_VERTEX_ARRAY_BINDING), oldBuffer = glGetInteger(GL_ARRAY_BUFFER_BINDING);
             try (MemoryStack memory = MemoryStack.stackPush()) {
                 glBindBuffer(GL_ARRAY_BUFFER, buffer);
@@ -112,7 +125,7 @@ public final class GenericShadowRenderer {
         if (framebuffer != 0) glDeleteFramebuffers(framebuffer);
         if (data != null) { MemoryUtil.memFree(data); MemoryUtil.memFree(previous); }
         data = previous = null;
-        failed = false;
+        failed = drawn = false;
         count = capacity = gpuCapacity = uploadedCount = program = vao = buffer = framebuffer = 0;
     }
 }

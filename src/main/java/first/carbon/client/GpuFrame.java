@@ -64,7 +64,7 @@ final class GpuFrame implements AutoCloseable {
             samplers[unit] = glGetInteger(GL_SAMPLER_BINDING);
         }
         var minecraft = Minecraft.getInstance();
-        var renderTarget = minecraft.getMainRenderTarget();
+        var renderTarget = minecraft.gameRenderer.mainRenderTarget();
         var color = RenderSystem.outputColorTextureOverride != null ? RenderSystem.outputColorTextureOverride.texture() : renderTarget.getColorTexture();
         var depth = RenderSystem.outputDepthTextureOverride != null ? RenderSystem.outputDepthTextureOverride.texture() : renderTarget.getDepthTexture();
         glBindFramebuffer(GL_DRAW_FRAMEBUFFER, target);
@@ -73,7 +73,8 @@ final class GpuFrame implements AutoCloseable {
         glDrawBuffer(GL_COLOR_ATTACHMENT0);
         glViewport(0, 0, color.getWidth(0), color.getHeight(0));
         glEnable(GL_DEPTH_TEST);
-        glDepthFunc(GL_LEQUAL);
+        // 26.2 使用反向深度（近处为 1），与原版 DepthStencilState.DEFAULT 的 GREATER_THAN_OR_EQUAL 一致
+        glDepthFunc(GL_GEQUAL);
         glDepthMask(true);
         glColorMask(true, true, true, true);
         glDisable(GL_BLEND);
@@ -82,7 +83,7 @@ final class GpuFrame implements AutoCloseable {
         glDisable(GL_POLYGON_OFFSET_FILL);
         glBlendEquationSeparate(GL_FUNC_ADD, GL_FUNC_ADD);
         glActiveTexture(GL_TEXTURE2);
-        glBindTexture(GL_TEXTURE_2D, ((GlTexture) minecraft.gameRenderer.lightTexture().getTextureView().texture()).glId());
+        glBindTexture(GL_TEXTURE_2D, ((GlTexture) minecraft.gameRenderer.lightmap().texture()).glId());
         glBindSampler(2, ((GlSampler) RenderSystem.getSamplerCache().getClampToEdge(FilterMode.LINEAR)).getId());
         var lighting = RenderSystem.getShaderLights();
         if (lighting != null) {

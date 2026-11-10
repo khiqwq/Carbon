@@ -25,6 +25,7 @@ public final class SmokeTest implements ClientModInitializer {
     private final Logger logger = LoggerFactory.getLogger("CarbonSmokeTest");
     private int stage;
     private int ticks;
+    private final int stress = Integer.getInteger("carbon.smoke.stress", 0);
 
     @Override
     public void onInitializeClient() {
@@ -33,18 +34,14 @@ public final class SmokeTest implements ClientModInitializer {
 
     private void tick(Minecraft minecraft) {
         ticks++;
-        if (stage == 0 && ticks > 40 && minecraft.getOverlay() == null && minecraft.level == null && minecraft.screen != null) {
+        if (stage == 0 && ticks > 40 && minecraft.gui.overlay() == null && minecraft.level == null && minecraft.gui.screen() != null) {
             stage = 1;
             String name = "carbon-smoke-" + System.currentTimeMillis();
-            GameRules rules = new GameRules(net.minecraft.world.flag.FeatureFlags.DEFAULT_FLAGS);
-            rules.set(GameRules.ADVANCE_TIME, false, null);
-            rules.set(GameRules.ADVANCE_WEATHER, false, null);
-            rules.set(GameRules.SPAWN_MOBS, false, null);
-            LevelSettings settings = new LevelSettings(name, GameType.CREATIVE, false, Difficulty.PEACEFUL, true, rules, WorldDataConfiguration.DEFAULT);
+            LevelSettings settings = new LevelSettings(name, GameType.CREATIVE, new LevelSettings.DifficultySettings(Difficulty.PEACEFUL, false, false), true, WorldDataConfiguration.DEFAULT);
             minecraft.createWorldOpenFlows().createFreshLevel(name, settings, new WorldOptions(1L, false, false),
                     registries -> registries.lookupOrThrow(Registries.WORLD_PRESET).getOrThrow(WorldPresets.FLAT).value().createWorldDimensions(), new net.minecraft.client.gui.screens.TitleScreen());
         }
-        if (stage == 1 && minecraft.player != null && minecraft.level != null && minecraft.getSingleplayerServer() != null && minecraft.screen == null) {
+        if (stage == 1 && minecraft.player != null && minecraft.level != null && minecraft.getSingleplayerServer() != null && minecraft.gui.screen() == null) {
             stage = 2;
             ticks = 0;
             var player = minecraft.player;
@@ -52,7 +49,11 @@ public final class SmokeTest implements ClientModInitializer {
             double x = player.getX(), y = player.getY(), z = player.getZ();
             server.execute(() -> {
                 ServerLevel level = server.overworld();
-                level.setDayTime(6000);
+                var rules = level.getGameRules();
+                rules.set(GameRules.ADVANCE_TIME, false, server);
+                rules.set(GameRules.ADVANCE_WEATHER, false, server);
+                rules.set(GameRules.SPAWN_MOBS, false, server);
+                server.getCommands().performPrefixedCommand(server.createCommandSourceStack(), "time set 6000");
                 var serverPlayer = server.getPlayerList().getPlayers().getFirst();
                 serverPlayer.getAbilities().flying = true;
                 serverPlayer.teleportTo(x, y + 3, z);
@@ -60,7 +61,7 @@ public final class SmokeTest implements ClientModInitializer {
                 serverPlayer.setXRot(45);
                 ItemStack book = new ItemStack(Items.ENCHANTED_BOOK);
                 ItemStack[] stacks = {new ItemStack(Items.DIAMOND_SWORD), new ItemStack(Items.STONE, 32), new ItemStack(Items.GLASS),
-                        book, new ItemStack(Items.APPLE, 64), new ItemStack(Items.OAK_LOG, 3), new ItemStack(Items.COMPASS), new ItemStack(Items.WHITE_STAINED_GLASS)};
+                        book, new ItemStack(Items.APPLE, 64), new ItemStack(Items.OAK_LOG, 3), new ItemStack(Items.COMPASS), new ItemStack(Items.STAINED_GLASS.white())};
                 if (Boolean.getBoolean("carbon.smoke.noTranslucent")) {
                     stacks[3] = new ItemStack(Items.BREAD, 5);
                     stacks[6] = new ItemStack(Items.GOLD_INGOT);
@@ -78,8 +79,25 @@ public final class SmokeTest implements ClientModInitializer {
         if (stage == 2 && ticks == 160) {
             report(minecraft, "default");
             Carbon.CONFIG.physicalDroppedItems.set(true);
-            stage = 3;
+            stage = stress > 0 ? 10 : 3;
             ticks = 0;
+        }
+        // 压力模式：每 1.5 秒轮换物理化、总开关与掉落物管线，持续指定秒数后回到常规流程
+        if (stage == 10) {
+            if (ticks % 30 == 0) {
+                int step = ticks / 30;
+                Carbon.CONFIG.physicalDroppedItems.set(step % 2 == 0);
+                Carbon.CONFIG.enabled.set(step % 5 != 4);
+                Carbon.CONFIG.optimizeDroppedItems.set(step % 7 != 6);
+            }
+            if (ticks >= stress * 20) {
+                Carbon.CONFIG.enabled.set(true);
+                Carbon.CONFIG.optimizeDroppedItems.set(true);
+                Carbon.CONFIG.physicalDroppedItems.set(true);
+                logger.info("[stress] survived {} s", stress);
+                stage = 3;
+                ticks = 0;
+            }
         }
         if (stage == 3 && ticks == 120) {
             report(minecraft, "physics");
@@ -122,6 +140,6 @@ public final class SmokeTest implements ClientModInitializer {
             }
             logger.info(state.toString());
         }
-        Screenshot.grab(minecraft.gameDirectory, "carbon-" + name + ".png", minecraft.getMainRenderTarget(), 1, message -> logger.info(message.getString()));
+        Screenshot.grab(minecraft.gameDirectory, "carbon-" + name + ".png", minecraft.gameRenderer.mainRenderTarget(), 1, message -> logger.info(message.getString()));
     }
 }

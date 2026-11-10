@@ -1,6 +1,6 @@
 # Carbon（碳）
 
-Minecraft 1.21.11 / Fabric Loader 0.18 及以上（需要 Fabric API）客户端 GPU 物品模型渲染优化模组，Java 21，MIT 许可证。本分支由 `26.1.2-neoforge` 回移，移植对照、实测与已知问题见 [Fabric 移植说明](FABRIC-PORT.md)。
+Minecraft 26.2 / Fabric Loader 0.19.3 及以上（需要 Fabric API）客户端 GPU 物品模型渲染优化模组，Java 25，MIT 许可证。本分支由上游 `26.1.2-neoforge` 移植，移植对照、实测与已知问题见 [Fabric 移植说明](FABRIC-PORT.md)。仅支持 OpenGL 后端，在视频设置中切换到 Vulkan 时自动保持原版渲染。
 
 ![Carbon](branding/mod-cover.svg)
 
@@ -33,16 +33,17 @@ cacheUpdateBudgetMs = 2.0
 
 ## 光影
 
-Iris 检测集中在 `IrisCompatibility`，启用光影包时为 Iris 程序派生实例化变体，覆盖主通道与光影阴影。已验证 Iris 1.10.8 与 Photon v1.3b。
+Iris 检测集中在 `IrisCompatibility`，启用光影包时为 Iris 程序派生实例化变体，覆盖主通道与光影阴影。已验证 Iris 1.11.4 与 Photon v1.4。Iris 在主帧中插入的阴影帧里，手持、展示框等物品保留原生绘制，掉落物仍参与光影阴影实例化。
 
 ## 验证与构建
 
-[更新记录](CHANGELOG.md)。使用 Java 21 执行 `gradlew.bat build`，输出 `build/libs/carbon-1.21.11.9-B-fabric.jar`。`gradlew.bat prodClient -PsmokeTest` 以生产环境 Jar 运行冒烟测试；`gradlew.bat benchPack -PbenchDir=<目录>` 在整合包隔离副本中对比帧率（整合包的模组与配置需预先复制到该目录）。
+[更新记录](CHANGELOG.md)。使用 Java 25 执行 `gradlew.bat build`，输出 `build/libs/carbon-26.2.9-B-fabric.jar`。`gradlew.bat prodClient -PsmokeTest` 以生产环境 Jar 运行冒烟测试，加 `-PsmokeStress=60` 反复切换配置以检验 JIT 重新编译；`gradlew.bat benchPack -PbenchDir=<目录>` 在整合包隔离副本中对比帧率（整合包的模组与配置需预先复制到该目录）。
 
 ## 分支与致谢
 
 | 分支 | Minecraft | 运行环境 | 许可证 |
 | --- | --- | --- | --- |
+| [`26.2`](https://github.com/khiqwq/Carbon/tree/26.2) | 26.2 | Fabric Loader 0.19.3+，Java 25 | MIT |
 | [`1.21.11`](https://github.com/khiqwq/Carbon/tree/1.21.11) | 1.21.11 | Fabric Loader 0.18+，Java 21 | MIT |
 | [`1.21.1`](https://github.com/khiqwq/Carbon/tree/1.21.1) | 1.21.1 | Fabric Loader 0.16+，Java 21 | MIT |
 | [`1.20.1`](https://github.com/khiqwq/Carbon/tree/1.20.1) | 1.20.1 | Fabric Loader 0.15+，Java 17 | GPL-3.0 |

@@ -12,7 +12,7 @@ import org.spongepowered.asm.mixin.injection.At;
 @Pseudo
 @Mixin(targets = "net.irisshaders.iris.shadows.ShadowRenderer", remap = false)
 public abstract class IrisShadowRendererMixin {
-    @WrapOperation(method = "extractVisibleEntities", at = @At(value = "INVOKE", target = "Lnet/minecraft/client/multiplayer/ClientLevel;entitiesForRendering()Ljava/lang/Iterable;", remap = true), require = 0)
+    @WrapOperation(method = "extractVisibleEntities", at = @At(value = "INVOKE", target = "Lnet/minecraft/client/multiplayer/ClientLevel;entitiesForRendering()Ljava/lang/Iterable;"), require = 0)
     private Iterable<Entity> carbon$shadows(ClientLevel level, Operation<Iterable<Entity>> original) {
         return Carbon.RENDERER.collectShadows(original.call(level));
     }
