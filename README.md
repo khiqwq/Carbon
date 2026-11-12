@@ -47,6 +47,7 @@ Iris 检测集中在 `IrisCompatibility`，启用光影包时为 Iris 程序派�
 
 | 分支 | Minecraft | 运行环境 | 许可证 |
 | --- | --- | --- | --- |
+| [`26.3`](https://github.com/khiqwq/Carbon/tree/26.3) | 26.3 | Fabric Loader 0.19.3+，Java 25 | MIT |
 | [`26.2`](https://github.com/khiqwq/Carbon/tree/26.2) | 26.2 | Fabric Loader 0.19.3+，Java 25 | MIT |
 | [`1.21.11`](https://github.com/khiqwq/Carbon/tree/1.21.11) | 1.21.11 | Fabric Loader 0.18+，Java 21 | MIT |
 | [`1.21.1`](https://github.com/khiqwq/Carbon/tree/1.21.1) | 1.21.1 | Fabric Loader 0.16+，Java 21 | MIT |
