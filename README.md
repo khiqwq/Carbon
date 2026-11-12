@@ -1,6 +1,6 @@
 # Carbon（碳）
 
-Minecraft 26.2 / Fabric Loader 0.19.3 及以上（需要 Fabric API）客户端 GPU 物品模型渲染优化模组，Java 25，MIT 许可证。本分支由上游 `26.1.2-neoforge` 移植，移植对照、实测与已知问题见 [Fabric 移植说明](FABRIC-PORT.md)。支持 OpenGL 与 Vulkan 渲染后端。
+Minecraft 26.3 / Fabric Loader 0.19.3 及以上（需要 Fabric API）客户端 GPU 物品模型渲染优化模组，Java 25，MIT 许可证。本分支由 26.2 分支（上游 `26.1.2-neoforge` 的 Fabric 移植）移植，移植对照、实测与已知问题见 [Fabric 移植说明](FABRIC-PORT.md)。支持 OpenGL 与 Vulkan 渲染后端。
 
 ![Carbon](branding/mod-cover.svg)
 
@@ -33,20 +33,21 @@ cacheUpdateBudgetMs = 2.0
 
 ## 渲染后端
 
-OpenGL 后端沿用上游的 GL 绘制，动画由计算着色器派发。Vulkan 后端改走 26.2 的 RenderPipeline 接口：掉落物、物理化掉落物、通用物品提交与附魔光效各用一条实例化管线，实例数据作为逐实例步进的顶点绑定上传，自旋、浮动与翻滚在顶点着色器中计算；掉落物圆形阴影同样实例化，通用物品的阴影交给原版。两种后端共用同一套着色器，`-Dcarbon.blaze3d=true` 可在 OpenGL 下强制使用 RenderPipeline 路径。
+26.3 的特性渲染在原版打开的渲染通道中执行，OpenGL 与 Vulkan 都经 RenderPipeline 绘制：掉落物、物理化掉落物与通用物品提交各用一条实例化管线，附魔光效与原版一样在同一次绘制中叠加。实例数据作为逐实例步进的顶点绑定上传，自旋、浮动与翻滚在顶点着色器中计算；实例、uniform 与纹理在准备阶段写好，执行阶段只绑定与绘制。掉落物圆形阴影同样实例化，通用物品的阴影交给原版。
 
 ## 光影
 
-Iris 检测集中在 `IrisCompatibility`，启用光影包时为 Iris 程序派生实例化变体，覆盖主通道与光影阴影。已验证 Iris 1.11.4 与 Photon v1.4。Iris 在主帧中插入的阴影帧里，手持、展示框等物品保留原生绘制，掉落物仍参与光影阴影实例化。Iris 1.11.4 不支持 Vulkan 后端（未安装 Carbon 时同样崩溃），光影只在 OpenGL 下可用。
+启用 Iris 光影包时 Carbon 保持原版物品渲染：26.3 的 OpenGL 后端改为共享渲染通道，26.2 分支中为 Iris 程序派生实例化变体的桥接尚未移植。已验证 Iris 1.11.7 与 Photon v1.4 下物品显示正常；光影只在 OpenGL 下测试。
 
 ## 验证与构建
 
-[更新记录](CHANGELOG.md)。使用 Java 25 执行 `gradlew.bat build`，输出 `build/libs/carbon-26.2.9-B.2-fabric.jar`。`gradlew.bat prodClient -PsmokeTest` 以生产环境 Jar 运行冒烟测试，追加 `"-PprodArgs=--graphicsBackend vulkan"` 时使用 Vulkan 后端，加 `-PsmokeStress=60` 反复切换配置以检验 JIT 重新编译；`gradlew.bat benchPack -PbenchDir=<目录>` 在整合包隔离副本中对比帧率（整合包的模组与配置需预先复制到该目录）。
+[更新记录](CHANGELOG.md)。使用 Java 25 执行 `gradlew.bat build`，输出 `build/libs/carbon-26.3.9-B-fabric.jar`。`gradlew.bat prodClient -PsmokeTest` 以生产环境 Jar 运行冒烟测试，追加 `"-PprodArgs=--graphicsBackend vulkan"` 时使用 Vulkan 后端，加 `-PsmokeStress=60` 反复切换配置以检验 JIT 重新编译；`gradlew.bat benchPack -PbenchDir=<目录>` 在整合包隔离副本中对比帧率（整合包的模组与配置需预先复制到该目录）。
 
 ## 分支与致谢
 
 | 分支 | Minecraft | 运行环境 | 许可证 |
 | --- | --- | --- | --- |
+| [`26.3`](https://github.com/khiqwq/Carbon/tree/26.3) | 26.3 | Fabric Loader 0.19.3+，Java 25 | MIT |
 | [`26.2`](https://github.com/khiqwq/Carbon/tree/26.2) | 26.2 | Fabric Loader 0.19.3+，Java 25 | MIT |
 | [`1.21.11`](https://github.com/khiqwq/Carbon/tree/1.21.11) | 1.21.11 | Fabric Loader 0.18+，Java 21 | MIT |
 | [`1.21.1`](https://github.com/khiqwq/Carbon/tree/1.21.1) | 1.21.1 | Fabric Loader 0.16+，Java 21 | MIT |

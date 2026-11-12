@@ -43,9 +43,10 @@ public final class Carbon implements ClientModInitializer {
         return value;
     }
 
-    // 是否经 RenderPipeline 绘制：Vulkan 必须，OpenGL 下可用 -Dcarbon.blaze3d=true 强制以便对照
+    // 26.3 的特性渲染在原版打开的 RenderPass 中执行，两种后端都经 RenderPipeline 绘制；
+    // 直接 GL 路径只为日后的 Iris 实例化桥接保留，当前不会启用。
     public static boolean useB3d() {
-        return !openGl() || Boolean.getBoolean("carbon.blaze3d");
+        return true;
     }
 
     @Override
@@ -62,8 +63,7 @@ public final class Carbon implements ClientModInitializer {
         ResourceLoader.get(PackType.CLIENT_RESOURCES).registerReloadListener(Identifier.fromNamespaceAndPath("carbon", "meshes"),
                 (ResourceManagerReloadListener) manager -> invalidate());
         ClientPlayConnectionEvents.DISCONNECT.register((handler, client) -> invalidate());
-        // 对应 NeoForge 的 AfterOpaqueFeatures：不透明特性批次执行之后
-        LevelRenderEvents.AFTER_SOLID_FEATURES.register(context -> RENDERER.flush(context.levelState().cameraRenderState));
+        // 掉落物在 LevelRendererMixin 中随原版实心通道绘制（26.3 的事件上下文不提供已打开的 RenderPass）
         ClientLifecycleEvents.CLIENT_STOPPING.register(client -> invalidate());
         ClientCommandRegistrationCallback.EVENT.register((dispatcher, registry) -> dispatcher.register(
                 literal("carbon")

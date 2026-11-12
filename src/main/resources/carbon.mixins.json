@@ -20,10 +20,10 @@
     "RenderTypeFeatureRendererMixin",
     "FeatureFrameMixin",
     "DynamicUniformsMixin",
-    "GlStateManagerMixin",
-    "GlCommandEncoderMixin",
+    
+    
     "IrisShadowRendererMixin",
-    "WindowMixin"
+    "LevelRendererMixin", "FeatureRenderDispatcherMixin"
   ],
   "injectors": {
     "defaultRequire": 1

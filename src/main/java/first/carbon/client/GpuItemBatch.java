@@ -1,7 +1,8 @@
 package first.carbon.client;
 
 import com.mojang.blaze3d.vertex.*;
-import com.mojang.blaze3d.buffers.GpuBuffer;
+import com.mojang.renderpearl.api.vertex.*;
+import com.mojang.renderpearl.api.buffers.GpuBuffer;
 import com.mojang.blaze3d.systems.RenderSystem;
 import first.carbon.Carbon;
 import net.minecraft.client.renderer.SubmitNodeCollector;
@@ -55,13 +56,6 @@ final class GpuItemBatch implements AutoCloseable {
     boolean processed;
     int retainedCount;
 
-    // 与 ItemFeatureRenderer.getFoilBuffer 一致：光影透明（Fabulous）时物品实体目标使用半透明光效
-    static net.minecraft.client.renderer.rendertype.RenderType foilType(net.minecraft.client.renderer.rendertype.RenderType type) {
-        return net.minecraft.client.Minecraft.getInstance().gameRenderer.gameRenderState().useShaderTransparency()
-                && type.outputTarget() == net.minecraft.client.renderer.rendertype.OutputTarget.ITEM_ENTITY_TARGET
-                ? net.minecraft.client.renderer.rendertype.RenderTypes.glintTranslucent() : net.minecraft.client.renderer.rendertype.RenderTypes.glint();
-    }
-
     GpuItemBatch(ItemStack stack, ItemStackRenderState state, ItemBatchRenderer renderer, boolean entityBatch, net.minecraft.client.renderer.feature.ItemFeatureRenderer.Submit submit) {
         this.stack = stack.copy();
         this.model = List.copyOf(((ItemBatchRenderer.ItemStateAccess) state).imo$identity());
@@ -97,21 +91,22 @@ final class GpuItemBatch implements AutoCloseable {
                 foil |= args[7] == ItemStackRenderState.FoilType.STANDARD;
                 PoseStack.Pose pose = ((PoseStack) args[0]).last();
                 int[] tints = (int[]) args[5];
-                for (BakedQuad quad : (List<BakedQuad>) args[6]) {
+                for (BakedQuad quad : ((net.minecraft.client.resources.model.geometry.ItemQuads) args[6]).all()) {
                     var material = quad.materialInfo();
                     if (!sprites.contains(material.sprite())) sprites.add(material.sprite());
                     if (material.itemRenderType().hasBlending()) throw new IllegalArgumentException("Translucent material");
                     var pipeline = material.itemRenderType().pipeline();
-                    String vertexShader = pipeline.getVertexShader().toString();
-                    if (!vertexShader.equals("minecraft:core/item")
-                            || !pipeline.getFragmentShader().equals(Identifier.withDefaultNamespace("core/item"))) {
+                    var shaders = pipeline.getShaders();
+                    if (!Identifier.withDefaultNamespace("core/item").equals(shaders.get(com.mojang.renderpearl.api.pipeline.ShaderType.VERTEX))
+                            || !Identifier.withDefaultNamespace("core/item").equals(shaders.get(com.mojang.renderpearl.api.pipeline.ShaderType.FRAGMENT))) {
                         throw new IllegalArgumentException("Custom item shader");
                     }
-                    Material key = new Material(material.sprite().atlasLocation(), pipeline.isCull(), Carbon.IRIS.active() ? material.itemRenderType() : null);
+                    Material key = new Material(material.sprite().atlasLocation(), pipeline.isCull(), Carbon.IRIS.active() ? material.itemRenderType() : null,
+                            Carbon.IRIS.active() ? material.itemGlintRenderType() : null);
                     BufferBuilder builder = builders.computeIfAbsent(key, ignored -> {
                         ByteBufferBuilder allocator = new ByteBufferBuilder(4096);
                         allocators.put(key, allocator);
-                        return new BufferBuilder(allocator, com.mojang.blaze3d.PrimitiveTopology.QUADS, DefaultVertexFormat.ENTITY);
+                        return new BufferBuilder(allocator, com.mojang.renderpearl.api.pipeline.PrimitiveTopology.QUADS, DefaultVertexFormat.ENTITY);
                     });
                     instance.setColor(material.tintIndex() >= 0 && material.tintIndex() < tints.length ? tints[material.tintIndex()] : -1);
                     instance.setLightCoords(0);
@@ -121,7 +116,7 @@ final class GpuItemBatch implements AutoCloseable {
                 return null;
             });
             if (submit == null) state.submit(new PoseStack(), collector, 0, OverlayTexture.NO_OVERLAY, 0);
-            else collector.submitItem(new PoseStack(), submit.displayContext(), 0, OverlayTexture.NO_OVERLAY, 0, submit.tintLayers(), submit.quads(), submit.foilType());
+            else collector.submitItem(new PoseStack(), submit.displayContext(), 0, OverlayTexture.NO_OVERLAY, 0, submit.tintLayers(), net.minecraft.client.resources.model.geometry.ItemQuads.split(submit.quads()), submit.foilType());
             for (var entry : builders.entrySet()) {
                 try (MeshData mesh = entry.getValue().build()) {
                     if (mesh != null) {
@@ -135,7 +130,7 @@ final class GpuItemBatch implements AutoCloseable {
                             int alpha = vertices.get(i * stride + 15) & 255;
                             if (alpha != 0 && alpha != 255) throw new IllegalArgumentException("Translucent vertex color");
                         }
-                        Mesh part = new Mesh(entry.getKey().texture, entry.getKey().cull, entry.getKey().type, vertices, mesh.drawState().format(), mesh.drawState().vertexCount());
+                        Mesh part = new Mesh(entry.getKey().texture, entry.getKey().cull, entry.getKey().type, entry.getKey().glintType, vertices, mesh.drawState().format(), mesh.drawState().vertexCount());
                         meshes.add(part);
                         meshBytes += vertices.remaining() + part.indices * 4L;
                     }
@@ -296,12 +291,13 @@ final class GpuItemBatch implements AutoCloseable {
         }
     }
 
-    private record Material(Identifier texture, boolean cull, net.minecraft.client.renderer.rendertype.RenderType type) {}
+    private record Material(Identifier texture, boolean cull, net.minecraft.client.renderer.rendertype.RenderType type,
+                            net.minecraft.client.renderer.rendertype.RenderType glintType) {}
 
     final class Mesh implements AutoCloseable {
         final Identifier texture;
         final boolean cull;
-        final net.minecraft.client.renderer.rendertype.RenderType type;
+        final net.minecraft.client.renderer.rendertype.RenderType type, glintType;
         final VertexFormat format;
         final GpuBuffer vertices;
         final int vao;
@@ -310,10 +306,12 @@ final class GpuItemBatch implements AutoCloseable {
         final int indices;
         private int boundInstances;
 
-        Mesh(Identifier texture, boolean cull, net.minecraft.client.renderer.rendertype.RenderType type, ByteBuffer vertices, VertexFormat format, int vertexCount) {
+        Mesh(Identifier texture, boolean cull, net.minecraft.client.renderer.rendertype.RenderType type, net.minecraft.client.renderer.rendertype.RenderType glintType,
+             ByteBuffer vertices, VertexFormat format, int vertexCount) {
             this.texture = texture;
             this.cull = cull;
             this.type = type;
+            this.glintType = glintType;
             this.format = format;
             this.vertices = RenderSystem.getDevice().createBuffer(() -> "Carbon item mesh", GpuBuffer.USAGE_VERTEX, vertices);
             indices = vertexCount / 4 * 6;

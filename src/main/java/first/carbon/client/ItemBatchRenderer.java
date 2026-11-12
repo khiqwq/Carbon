@@ -1,6 +1,6 @@
 package first.carbon.client;
 
-import com.mojang.blaze3d.opengl.GlTexture;
+import com.mojang.renderpearl.backend.opengl.GlTexture;
 import com.mojang.blaze3d.systems.RenderSystem;
 import first.carbon.Carbon;
 import it.unimi.dsi.fastutil.ints.Int2ObjectOpenHashMap;
@@ -115,6 +115,11 @@ public final class ItemBatchRenderer {
             if (b3d) {
                 // RenderPipeline 路径不需要 GL 程序与计算着色器，动画在顶点着色器中计算
                 if (shadows == null) {
+                    if (!B3d.compile()) {
+                        failed = true;
+                        logger.error("Keeping vanilla item rendering: Carbon render pipelines failed to compile");
+                        return;
+                    }
                     shadows = new GpuShadowBatch();
                     logger.info("GPU item instancing ready through {} render pipelines", com.mojang.blaze3d.systems.RenderSystem.getDevice().getDeviceInfo().backendName());
                 }
@@ -252,7 +257,7 @@ public final class ItemBatchRenderer {
                     updateDistanceMargin = Math.min(updateDistanceMargin, Math.abs(size * 64 * Entity.getViewScale() - item.position().distanceTo(camera)));
                 }
                 if (skip ? !item.shouldRender(camera.x, camera.y, camera.z)
-                        : !dispatcher.shouldRender(item, frustum, camera.x, camera.y, camera.z)) continue;
+                        : !dispatcher.shouldRender(item, frustum, camera.x, camera.y, camera.z, partialTick)) continue;
                 ItemStack stack = item.getItem();
                 EntityCache cache = ((EntityCacheAccess) item).imo$cache();
                 if (cache.generation != generation || (cache.stack != stack || cache.version != ((ComponentVersion) stack.getComponents()).imo$version() || cache.dynamicFoil && cache.foil != ((FoilState) (Object) stack).imo$foil(minecraft.gui.hud.getGuiTicks())) || cache.batch != null && cache.batch.closed) {
@@ -380,7 +385,7 @@ public final class ItemBatchRenderer {
                 Carbon.SODIUM.mark(batch.sprites);
                 uploadedBytes += batch.upload();
                 for (int pass = 0; pass < (batch.foil && !shadow ? 2 : 1); pass++) for (var mesh : batch.meshes) {
-                    var type = pass == 0 ? mesh.type : GpuItemBatch.foilType(mesh.type);
+                    var type = pass == 0 ? mesh.type : mesh.glintType;
                     Carbon.IRIS.draw(type, mesh.vertices, mesh.vertexBuffer, mesh.indexBuffer, mesh.format, mesh.indices,
                             batch.count, batch.instanceBuffer, batch.physics ? 4 : 3, offset, clock, batch.groundScaleY, batch.center, batch.halfSize);
                     if (!shadow) drawCalls++;
@@ -409,13 +414,29 @@ public final class ItemBatchRenderer {
     }
 
     // 拆成小方法：Java 25.0.1（官方启动器为 26.x 提供的运行时）的 C2 在编译原先单个嵌套循环、多层 try-with-resources 的 flush 时会崩溃。
-    public void flush(CameraRenderState state) {
+    private B3d.Prepared preparedItems;
+
+    // 原版准备好关卡特性帧之后、打开实心通道之前：上传掉落物实例与阴影，写好 uniform
+    public void prepare(CameraRenderState state) {
+        preparedItems = null;
+        if (!active || Carbon.IRIS.active() || !Carbon.useB3d()) return;
+        var camera = new org.joml.Vector3f((float) (state.pos.x - originX), (float) (state.pos.y - originY), (float) (state.pos.z - originZ));
+        List<GpuItemBatch> batches = new ArrayList<>();
+        for (var bucket : buckets.values()) for (var batch : bucket) if (batch.count > 0 && !batch.flushed) batches.add(batch);
+        if (!batches.isEmpty()) {
+            for (var batch : batches) uploadedBytes += batch.upload();
+            preparedItems = B3d.prepare(physics ? B3d.Kind.PHYSICS : B3d.Kind.DROPPED, batches, state.viewRotationMatrix, camera, clock);
+        }
+        if (shadows != null && shadows.count > 0) uploadedBytes += shadows.prepareB3d(state.viewRotationMatrix, camera);
+    }
+
+    // 在原版实心通道（地形与实心特性之后）中调用，掉落物与阴影画进同一个 RenderPass
+    public void flush(com.mojang.renderpearl.api.commands.RenderPass renderPass, CameraRenderState state) {
         if (active) {
             if (Carbon.IRIS.active()) {
                 drawIris(state.viewRotationMatrix, state.pos, false);
             } else if (instances > 0 || shadows != null && shadows.count > 0) {
-                // 没有实例和阴影时跳过状态保存与帧缓冲切换
-                if (Carbon.useB3d()) drawB3d(state);
+                if (Carbon.useB3d()) drawB3d(renderPass, state);
                 else drawFrame(state);
             }
             active = false;
@@ -423,20 +444,13 @@ public final class ItemBatchRenderer {
         }
     }
 
-    private void drawB3d(CameraRenderState state) {
-        var camera = new org.joml.Vector3f((float) (state.pos.x - originX), (float) (state.pos.y - originY), (float) (state.pos.z - originZ));
-        List<GpuItemBatch> batches = new ArrayList<>();
-        for (var bucket : buckets.values()) for (var batch : bucket) if (batch.count > 0 && !batch.flushed) batches.add(batch);
-        if (!batches.isEmpty()) {
-            // 先上传以计入统计，drawItems 中的上传随后直接返回
-            for (var batch : batches) uploadedBytes += batch.upload();
-            drawCalls += B3d.drawItems(physics ? B3d.Kind.PHYSICS : B3d.Kind.DROPPED, batches, state.viewRotationMatrix, camera, clock, "Carbon dropped items");
-            for (var batch : batches) batch.flushed = true;
+    private void drawB3d(com.mojang.renderpearl.api.commands.RenderPass renderPass, CameraRenderState state) {
+        if (preparedItems != null) {
+            drawCalls += B3d.draw(renderPass, preparedItems);
+            for (var batch : preparedItems.batches()) batch.flushed = true;
+            preparedItems = null;
         }
-        if (shadows != null && shadows.count > 0) {
-            uploadedBytes += shadows.drawB3d(state.viewRotationMatrix, camera);
-            shadowDrawCalls++;
-        }
+        if (shadows != null && shadows.drawB3d(renderPass)) shadowDrawCalls++;
     }
 
     private void drawFrame(CameraRenderState state) {

@@ -1,10 +1,13 @@
 package first.carbon.mixin;
 
 import first.carbon.Carbon;
+import com.mojang.renderpearl.api.commands.RenderPass;
 import net.minecraft.client.renderer.feature.FeatureFrameContext;
 import net.minecraft.client.renderer.feature.ItemFeatureRenderer;
 import net.minecraft.client.renderer.feature.RenderTypeFeatureRenderer;
 import net.minecraft.client.renderer.feature.ShadowFeatureRenderer;
+import net.minecraft.client.renderer.oit.OitStage;
+import org.jspecify.annotations.Nullable;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
@@ -16,9 +19,10 @@ import java.util.List;
 @Mixin(RenderTypeFeatureRenderer.class)
 public abstract class RenderTypeFeatureRendererMixin {
     @Inject(method = "executeGroup", at = @At("TAIL"))
-    private void carbon$execute(FeatureFrameContext context, int groupIndex, List<?> submits, boolean strictlyOrdered, CallbackInfo ci) {
+    private void carbon$execute(FeatureFrameContext context, @Nullable OitStage stage, RenderPass renderPass, int groupIndex, List<?> submits, boolean strictlyOrdered, CallbackInfo ci) {
         Object self = this;
-        if (self instanceof ItemFeatureRenderer) Carbon.GENERIC.execute(groupIndex);
+        // 26.3 的分组在原版打开的 RenderPass 中执行；实心物品只出现在不经 OIT 的实心阶段
+        if (self instanceof ItemFeatureRenderer) Carbon.GENERIC.execute(groupIndex, stage == null ? renderPass : null);
         else if (self instanceof ShadowFeatureRenderer) Carbon.SHADOWS.flush();
     }
 }

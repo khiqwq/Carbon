@@ -1,40 +1,45 @@
 #version 330
+#extension GL_ARB_separate_shader_objects : require
 
 // 经 RenderPipeline 绘制的实例化物品，OpenGL 与 Vulkan 后端共用。
-// GENERIC：通用物品提交（每实例变换矩阵）；PHYSICS：物理化掉落物；默认：掉落物自旋与浮动；GLINT：附魔光效通道。
-#moj_import <minecraft:light.glsl>
-#moj_import <minecraft:fog.glsl>
-#moj_import <minecraft:dynamictransforms.glsl>
-#moj_import <minecraft:projection.glsl>
-#moj_import <minecraft:sample_lightmap.glsl>
-#moj_import <carbon:carbon_draw.glsl>
+// GENERIC：通用物品提交（每实例变换矩阵）；PHYSICS：物理化掉落物；默认：掉落物自旋与浮动；GLINT：附魔光效在同一次绘制中叠加。
+// 26.3 以独立着色器对象编译：输入按名称匹配顶点格式，位置在此显式给出（实例属性接在原版实体格式之后，共 16 个）。
+#include <minecraft:light.glsl>
+#include <minecraft:fog.glsl>
+#include <minecraft:dynamictransforms.glsl>
+#include <minecraft:projection.glsl>
+#include <minecraft:sample_lightmap.glsl>
+#include <carbon:carbon_draw.glsl>
 
-in vec3 Position;
-in vec4 Color;
-in vec2 UV0;
-in ivec2 UV1;
-in ivec2 UV2;
-in vec3 Normal;
+layout(location = 0) in vec3 Position;
+layout(location = 1) in vec4 Color;
+layout(location = 2) in vec2 UV0;
+layout(location = 3) in ivec2 UV1;
+layout(location = 4) in ivec2 UV2;
+layout(location = 5) in vec3 Normal;
 #ifdef GENERIC
-in mat4 Instance;
-in vec4 Animation;
-in vec2 Data;
-in mat3 InstanceNormal;
-in vec3 CopyOffset;
+layout(location = 6) in mat4 Instance;
+layout(location = 10) in vec4 Animation;
+layout(location = 11) in vec2 Data;
+layout(location = 12) in mat3 InstanceNormal;
+layout(location = 15) in vec3 CopyOffset;
 #else
-in vec3 Translation;
-in uvec2 Light;
-in vec2 Animation;
-in vec4 Copy;
+layout(location = 6) in vec3 Translation;
+layout(location = 7) in uvec2 Light;
+layout(location = 8) in vec2 Animation;
+layout(location = 9) in vec4 Copy;
 #endif
 
 uniform sampler2D Sampler2;
 
-out float sphericalVertexDistance;
-out float cylindricalVertexDistance;
-out vec4 vertexColor;
-out vec4 lightMapColor;
-out vec2 texCoord0;
+layout(location = 0) out float sphericalVertexDistance;
+layout(location = 1) out float cylindricalVertexDistance;
+layout(location = 2) out vec4 vertexColor;
+layout(location = 3) out vec4 lightMapColor;
+layout(location = 4) out vec2 texCoord0;
+#ifdef GLINT
+layout(location = 5) out vec2 texCoordGlint;
+#endif
 
 #ifdef PHYSICS
 vec4 multiplyRotation(vec4 a, vec4 b) {
@@ -110,9 +115,8 @@ void main() {
     cylindricalVertexDistance = fog_cylindrical_distance(position);
     vertexColor = UV1.x == 0 ? Color : minecraft_mix_light(Light0_Direction, Light1_Direction, normal, Color);
     lightMapColor = UV1.y == 0 ? vec4(1.0) : sample_lightmap(Sampler2, light);
-#ifdef GLINT
-    texCoord0 = (TextureMat * vec4(UV0, 0.0, 1.0)).xy;
-#else
     texCoord0 = UV0;
+#ifdef GLINT
+    texCoordGlint = (TextureMat * vec4(UV0, 0.0, 1.0)).xy;
 #endif
 }

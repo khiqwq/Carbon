@@ -1,30 +1,40 @@
 #version 330
+#extension GL_ARB_separate_shader_objects : require
 
-#moj_import <minecraft:fog.glsl>
-#moj_import <minecraft:globals.glsl>
-#moj_import <minecraft:dynamictransforms.glsl>
+#include <minecraft:fog.glsl>
+#include <minecraft:globals.glsl>
+#include <minecraft:dynamictransforms.glsl>
 
 uniform sampler2D Sampler0;
+#ifdef GLINT
+uniform sampler2D GlintSampler;
+#endif
 
-in float sphericalVertexDistance;
-in float cylindricalVertexDistance;
-in vec4 vertexColor;
-in vec4 lightMapColor;
-in vec2 texCoord0;
+layout(location = 0) in float sphericalVertexDistance;
+layout(location = 1) in float cylindricalVertexDistance;
+layout(location = 2) in vec4 vertexColor;
+layout(location = 3) in vec4 lightMapColor;
+layout(location = 4) in vec2 texCoord0;
+#ifdef GLINT
+layout(location = 5) in vec2 texCoordGlint;
+#endif
 
-out vec4 fragColor;
+layout(location = 0) out vec4 fragColor;
 
+// 与原版 26.3 core/item 的实心路径一致：剪切、顶点颜色、光照贴图、附魔光效、雾
 void main() {
     vec4 color = texture(Sampler0, texCoord0);
     if (color.a < 0.1) {
         discard;
     }
-#ifdef GLINT
-    float fade = (1.0 - total_fog_value(sphericalVertexDistance, cylindricalVertexDistance, FogEnvironmentalStart, FogEnvironmentalEnd, FogRenderDistanceStart, FogRenderDistanceEnd)) * GlintAlpha;
-    fragColor = vec4(color.rgb * fade, color.a);
-#else
     color *= vertexColor * ColorModulator;
-    color *= lightMapColor;
-    fragColor = apply_fog(color, sphericalVertexDistance, cylindricalVertexDistance, FogEnvironmentalStart, FogEnvironmentalEnd, FogRenderDistanceStart, FogRenderDistanceEnd, FogColor);
+#ifdef GLINT
+    color.a = max(color.a, GlintAlpha);
 #endif
+    color *= lightMapColor;
+#ifdef GLINT
+    vec4 glintColor = GlintAlpha * texture(GlintSampler, texCoordGlint);
+    color.rgb += glintColor.rgb * glintColor.rgb;
+#endif
+    fragColor = apply_fog(color, sphericalVertexDistance, cylindricalVertexDistance, FogEnvironmentalStart, FogEnvironmentalEnd, FogRenderDistanceStart, FogRenderDistanceEnd, FogColor);
 }

@@ -1,8 +1,8 @@
 package first.carbon.compat;
 
-import com.mojang.blaze3d.buffers.GpuBuffer;
+import com.mojang.renderpearl.api.buffers.GpuBuffer;
 import com.mojang.blaze3d.systems.RenderSystem;
-import com.mojang.blaze3d.vertex.VertexFormat;
+import com.mojang.renderpearl.api.vertex.VertexFormat;
 import first.carbon.Carbon;
 import it.unimi.dsi.fastutil.ints.Int2IntOpenHashMap;
 import net.minecraft.client.renderer.rendertype.RenderType;
@@ -90,10 +90,8 @@ public final class IrisCompatibility {
 
     public boolean canInstance() {
         // Iris 只支持 OpenGL；其他后端下没有 GL 上下文，不能查询 GL 能力
-        if (!Carbon.openGl()) return !active;
-        var capabilities = GL.getCapabilities();
-        return !active || ready && !blocked && (capabilities.OpenGL43 || capabilities.GL_ARB_shader_storage_buffer_object
-                && capabilities.GL_ARB_program_interface_query && capabilities.GL_ARB_shading_language_420pack);
+        // 26.3 的 OpenGL 后端改为共享 RenderPass，原有的 Iris 实例化桥接尚未移植：启用光影包时保持原版渲染
+        return !active;
     }
 
     public boolean shadowPass() {
@@ -183,21 +181,21 @@ public final class IrisCompatibility {
                      int instances, int instanceBuffer, int mode, Vector3f camera, float clock, float scale, Vector3f center, Vector3f halfSize) {
         // 26.2 的 PreparedRenderType 已包含当前模型视图、分层变换、纹理变换、裁剪与采样器
         var prepared = type.prepare();
-        var target = prepared.outputTarget().getRenderTarget();
-        var color = RenderSystem.outputColorTextureOverride != null ? RenderSystem.outputColorTextureOverride : target.getColorTextureView();
-        var depth = target.useDepth ? (RenderSystem.outputDepthTextureOverride != null ? RenderSystem.outputDepthTextureOverride : target.getDepthTextureView()) : null;
-        var autoIndices = RenderSystem.getSequentialBuffer(com.mojang.blaze3d.PrimitiveTopology.QUADS);
+        var target = net.minecraft.client.Minecraft.getInstance().gameRenderer.mainRenderTarget();
+        var color = target.getColorTextureView();
+        var depth = target.getDepthTextureView();
+        var autoIndices = RenderSystem.getSequentialBuffer(com.mojang.renderpearl.api.pipeline.PrimitiveTopology.QUADS);
         var elements = autoIndices.getBuffer(indices);
         current = new Draw(vertexBuffer, indexBuffer, format, indices, instances, instanceBuffer, mode, camera, clock, scale, center, halfSize);
         try (var pass = RenderSystem.getDevice().createCommandEncoder().createRenderPass(() -> "Carbon Iris items", color, Optional.empty(), depth, OptionalDouble.empty())) {
-            pass.setPipeline(prepared.pipeline());
+            pass.setPipeline(RenderSystem.getCompiledPipeline(prepared.pipeline()));
             var scissor = prepared.scissorState();
             if (scissor.enabled()) pass.enableScissor(scissor.x(), scissor.y(), scissor.width(), scissor.height());
             RenderSystem.bindDefaultUniforms(pass);
             pass.setUniform("DynamicTransforms", prepared.dynamicTransforms());
             pass.setVertexBuffer(0, vertices.slice());
             pass.setIndexBuffer(elements, autoIndices.type());
-            for (var texture : prepared.textures()) pass.bindTexture(texture.name(), texture.textureView(), texture.sampler());
+            for (var texture : prepared.textures()) pass.setUniform(texture.name(), texture.textureView(), texture.sampler());
             pass.drawIndexed(indices, 1, 0, 0, 0);
         } finally { current = null; }
     }

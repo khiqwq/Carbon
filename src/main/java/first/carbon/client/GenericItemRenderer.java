@@ -10,6 +10,7 @@ import net.minecraft.client.renderer.item.ItemStackRenderState;
 import net.minecraft.client.renderer.rendertype.TextureTransform;
 import net.minecraft.client.renderer.texture.OverlayTexture;
 import net.minecraft.client.resources.model.geometry.BakedQuad;
+import net.minecraft.client.resources.model.geometry.ItemQuads;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import org.joml.Matrix4f;
@@ -59,7 +60,7 @@ public final class GenericItemRenderer {
         }
         boolean b3d = Carbon.useB3d();
         active = !failed && Carbon.CONFIG.enabled.get() && Carbon.IRIS.canInstance() && Carbon.IRIS.canSubmit()
-                && (b3d || Minecraft.getInstance().gameRenderer.mainRenderTarget().getColorTexture() instanceof com.mojang.blaze3d.opengl.GlTexture
+                && (b3d || Minecraft.getInstance().gameRenderer.mainRenderTarget().getColorTexture() instanceof com.mojang.renderpearl.backend.opengl.GlTexture
                 && GL.getCapabilities().OpenGL33) && RenderSystem.getProjectionMatrixBuffer() != null && RenderSystem.getShaderFog() != null;
         frame = Minecraft.getInstance().gui.hud.getGuiTicks();
         instances = drawCalls = 0;
@@ -104,7 +105,7 @@ public final class GenericItemRenderer {
 
     private boolean submit(ItemFeatureRenderer.Submit submit) {
         if (!active || submit.outlineColor() != 0 || submit.overlayCoords() != OverlayTexture.NO_OVERLAY
-                || submit.foilType() == ItemStackRenderState.FoilType.SPECIAL || submit.quads().isEmpty() || submit.hasTranslucency()) return false;
+                || submit.foilType() == ItemStackRenderState.FoilType.SPECIAL || submit.quads().isEmpty() || translucent(submit.quads())) return false;
         int[] captured = Carbon.IRIS.capture(submit);
         try {
             Key key = new Key(List.copyOf(submit.quads()), new IntArrayList(submit.tintLayers()), submit.foilType(), Carbon.IRIS.identifiers());
@@ -113,7 +114,7 @@ public final class GenericItemRenderer {
                 if (meshes.size() >= 256 || meshBytes >= 67108864) return false;
                 ItemStackRenderState state = new ItemStackRenderState();
                 var layer = state.newLayer();
-                layer.prepareQuadList().addAll(submit.quads());
+                layer.setQuads(ItemQuads.split(submit.quads()));
                 for (int tint : submit.tintLayers()) layer.tintLayers().add(tint);
                 layer.setFoilType(submit.foilType());
                 try {
@@ -133,8 +134,29 @@ public final class GenericItemRenderer {
         } finally { Carbon.IRIS.restore(captured); }
     }
 
-    public void execute(int group) {
-        if (depth == 1 && group == firstGroup) flush();
+    // 26.3 把物品的实心与半透明四边形拆成两个提交，半透明部分进入排序与 OIT 阶段，保持原版绘制
+    private static boolean translucent(List<BakedQuad> quads) {
+        for (BakedQuad quad : quads) if (quad.materialInfo().itemRenderType().hasBlending()) return true;
+        return false;
+    }
+
+    public void execute(int group, com.mojang.renderpearl.api.commands.RenderPass renderPass) {
+        if (depth == 1 && group == firstGroup && renderPass != null) {
+            this.renderPass = renderPass;
+            try { flush(); } finally { this.renderPass = null; }
+        }
+    }
+
+    private com.mojang.renderpearl.api.commands.RenderPass renderPass;
+    private B3d.Prepared prepared;
+
+    // 原版上传共享顶点缓冲之前（此时没有打开的 RenderPass）上传实例并写好 uniform；模型视图与原版物品类型一样在准备时取得
+    public void prepare() {
+        prepared = null;
+        if (!active || depth != 1 || instances == 0 || Carbon.IRIS.active() || !Carbon.useB3d()) return;
+        java.util.List<GpuItemBatch> batches = new java.util.ArrayList<>();
+        for (GpuItemBatch batch : meshes.values()) if (batch.count != 0) batches.add(batch);
+        if (!batches.isEmpty()) prepared = B3d.prepare(B3d.Kind.GENERIC, batches, RenderSystem.getModelViewStack(), new org.joml.Vector3f(), 0);
     }
 
     private void flush() {
@@ -145,7 +167,7 @@ public final class GenericItemRenderer {
                     Carbon.SODIUM.mark(batch.sprites);
                     batch.upload();
                     for (int pass = 0; pass < (batch.foil ? 2 : 1); pass++) for (var mesh : batch.meshes) {
-                        var type = pass == 0 ? mesh.type : GpuItemBatch.foilType(mesh.type);
+                        var type = pass == 0 ? mesh.type : mesh.glintType;
                         if (pass == 0 || !Carbon.IRIS.shadowPass()) {
                             Carbon.IRIS.draw(type, mesh.vertices, mesh.vertexBuffer, mesh.indexBuffer, mesh.format, mesh.indices,
                                     batch.count, batch.instanceBuffer, 0, zero, 0, 0, batch.center, batch.halfSize);
@@ -154,11 +176,12 @@ public final class GenericItemRenderer {
                     }
                 }
             } else if (Carbon.useB3d()) {
-                java.util.List<GpuItemBatch> batches = new java.util.ArrayList<>();
-                for (GpuItemBatch batch : meshes.values()) if (batch.count != 0) batches.add(batch);
-                int draws = B3d.drawItems(B3d.Kind.GENERIC, batches, RenderSystem.getModelViewStack(), new org.joml.Vector3f(), 0, "Carbon items");
-                drawCalls += draws;
-                totalDraws += draws;
+                if (prepared != null) {
+                    int draws = B3d.draw(renderPass, prepared);
+                    prepared = null;
+                    drawCalls += draws;
+                    totalDraws += draws;
+                }
             } else try (GpuFrame gpu = new GpuFrame(framebuffer, true); MemoryStack memory = MemoryStack.stackPush()) {
                 var scissor = RenderSystem.getScissorStateForRenderTypeDraws();
                 if (scissor.enabled()) { glEnable(GL_SCISSOR_TEST); glScissor(scissor.x(), scissor.y(), scissor.width(), scissor.height()); }

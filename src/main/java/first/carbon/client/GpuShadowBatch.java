@@ -26,7 +26,7 @@ final class GpuShadowBatch implements AutoCloseable {
     private final int buffer;
     // RenderPipeline 路径：实例数据放在 GpuBuffer 中，由 B3d.drawShadows 绘制
     private final boolean b3d;
-    private com.mojang.blaze3d.buffers.GpuBuffer instances;
+    private com.mojang.renderpearl.api.buffers.GpuBuffer instances;
     private ByteBuffer data;
     private ByteBuffer previous;
     private ByteBuffer updateData;
@@ -138,7 +138,11 @@ final class GpuShadowBatch implements AutoCloseable {
         dirty = true;
     }
 
-    long drawB3d(org.joml.Matrix4fc view, org.joml.Vector3fc camera) {
+    private B3d.PreparedShadows prepared;
+
+    // 准备阶段上传实例并写好 uniform，返回上传字节数
+    long prepareB3d(org.joml.Matrix4fc view, org.joml.Vector3fc camera) {
+        prepared = null;
         long uploaded = 0;
         if (count > 0 && !flushed) {
             boolean changed = gpuCapacity < capacity || uploadedCount != count
@@ -155,10 +159,17 @@ final class GpuShadowBatch implements AutoCloseable {
             }
             uploadedCount = count;
             dirty = false;
-            B3d.drawShadows(instances, count, view, camera, texture);
-            flushed = true;
+            prepared = B3d.prepareShadows(instances, count, view, camera, texture);
         }
         return uploaded;
+    }
+
+    boolean drawB3d(com.mojang.renderpearl.api.commands.RenderPass pass) {
+        if (prepared == null || flushed) return false;
+        B3d.drawShadows(pass, prepared);
+        prepared = null;
+        flushed = true;
+        return true;
     }
 
     long draw(net.minecraft.client.renderer.state.level.CameraRenderState cameraState, GpuFrame frame) {

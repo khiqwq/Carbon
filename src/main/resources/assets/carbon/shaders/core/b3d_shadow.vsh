@@ -1,20 +1,21 @@
 #version 330
+#extension GL_ARB_separate_shader_objects : require
 
 // 掉落物圆形阴影：每个实例是一个接收面上的四边形，四个角由逐顶点的 Corner 选择。
-#moj_import <minecraft:fog.glsl>
-#moj_import <minecraft:dynamictransforms.glsl>
-#moj_import <minecraft:projection.glsl>
-#moj_import <carbon:carbon_draw.glsl>
+#include <minecraft:fog.glsl>
+#include <minecraft:dynamictransforms.glsl>
+#include <minecraft:projection.glsl>
+#include <carbon:carbon_draw.glsl>
 
-in vec2 Corner;
-in vec4 Bounds;
-in vec4 Shadow;
-in vec4 Parameters;
+layout(location = 0) in vec2 Corner;
+layout(location = 1) in vec4 Bounds;
+layout(location = 2) in vec4 Shadow;
+layout(location = 3) in vec4 Parameters;
 
-out vec2 texCoord0;
-out float shadowAlpha;
-out float sphericalVertexDistance;
-out float cylindricalVertexDistance;
+layout(location = 0) out vec2 texCoord0;
+layout(location = 1) out float shadowAlpha;
+layout(location = 2) out float sphericalVertexDistance;
+layout(location = 3) out float cylindricalVertexDistance;
 
 void main() {
     float x = Corner.x == 0.0 ? Bounds.x : Bounds.w;

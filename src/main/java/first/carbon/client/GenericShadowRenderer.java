@@ -37,7 +37,7 @@ public final class GenericShadowRenderer {
         // RenderPipeline 路径下通用物品阴影交给原版，原版同样经 RenderPipeline 绘制
         if (Carbon.useB3d()) return submissions;
         if (depth != 1 || failed || !Carbon.CONFIG.enabled.get() || Carbon.IRIS.active() || RenderSystem.getProjectionMatrixBuffer() == null
-                || !(net.minecraft.client.Minecraft.getInstance().gameRenderer.mainRenderTarget().getColorTexture() instanceof com.mojang.blaze3d.opengl.GlTexture)
+                || !(net.minecraft.client.Minecraft.getInstance().gameRenderer.mainRenderTarget().getColorTexture() instanceof com.mojang.renderpearl.backend.opengl.GlTexture)
                 || RenderSystem.getShaderFog() == null || !org.lwjgl.opengl.GL.getCapabilities().OpenGL33) return submissions;
         if (program == 0 && submissions.stream().anyMatch(submit -> submit.radius() == 0.15f)) {
             int oldVao = glGetInteger(GL_VERTEX_ARRAY_BINDING), oldBuffer = glGetInteger(GL_ARRAY_BUFFER_BINDING);

@@ -1,9 +1,9 @@
 package first.carbon.client;
 
-import com.mojang.blaze3d.opengl.GlSampler;
-import com.mojang.blaze3d.opengl.GlTexture;
+import com.mojang.renderpearl.backend.opengl.GlSampler;
+import com.mojang.renderpearl.backend.opengl.GlTexture;
 import com.mojang.blaze3d.systems.RenderSystem;
-import com.mojang.blaze3d.textures.FilterMode;
+import com.mojang.renderpearl.api.textures.FilterMode;
 import net.minecraft.client.Minecraft;
 import net.minecraft.resources.Identifier;
 import org.lwjgl.system.MemoryStack;
@@ -47,7 +47,7 @@ final class GpuFrame implements AutoCloseable {
         if (shared) {
             var projection = RenderSystem.getProjectionMatrixBuffer();
             var fog = RenderSystem.getShaderFog();
-            var sources = new com.mojang.blaze3d.buffers.GpuBufferSlice[]{projection, fog};
+            var sources = new com.mojang.renderpearl.api.buffers.GpuBufferSlice[]{projection, fog};
             for (int i = 0; i < 2; i++) {
                 sharedBuffers[i] = glGetIntegeri(GL_UNIFORM_BUFFER_BINDING, i + 4);
                 sharedStarts[i] = glGetInteger64i(GL_UNIFORM_BUFFER_START, i + 4);
@@ -65,8 +65,8 @@ final class GpuFrame implements AutoCloseable {
         }
         var minecraft = Minecraft.getInstance();
         var renderTarget = minecraft.gameRenderer.mainRenderTarget();
-        var color = RenderSystem.outputColorTextureOverride != null ? RenderSystem.outputColorTextureOverride.texture() : renderTarget.getColorTexture();
-        var depth = RenderSystem.outputDepthTextureOverride != null ? RenderSystem.outputDepthTextureOverride.texture() : renderTarget.getDepthTexture();
+        var color = renderTarget.getColorTexture();
+        var depth = renderTarget.getDepthTexture();
         glBindFramebuffer(GL_DRAW_FRAMEBUFFER, target);
         glFramebufferTexture2D(GL_DRAW_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, ((GlTexture) color).glId(), 0);
         glFramebufferTexture2D(GL_DRAW_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, ((GlTexture) depth).glId(), 0);
