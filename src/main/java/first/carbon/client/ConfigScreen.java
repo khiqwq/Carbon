@@ -65,6 +65,6 @@ public final class ConfigScreen extends Screen {
     @Override
     public void onClose() {
         Carbon.CONFIG.save();
-        minecraft.gui.setScreen(parent);
+        minecraft.setScreen(parent);
     }
 }

@@ -63,7 +63,7 @@ tasks.register('prodClient', net.fabricmc.loom.task.prod.ClientProductionRunTask
     if (project.hasProperty('noTranslucent')) jvmArgs.add('-Dcarbon.smoke.noTranslucent=true')
     // -PsmokeStress=<秒>：反复切换物理化与总开关，促使 JIT 重新编译绘制路径
     if (project.hasProperty('smokeStress')) jvmArgs.add('-Dcarbon.smoke.stress=' + findProperty('smokeStress'))
-    // -PprodArgs="--graphicsBackend vulkan"：追加游戏启动参数
+    // -PprodArgs="<参数>"：追加游戏启动参数
     if (project.hasProperty('prodArgs')) programArgs.addAll(findProperty('prodArgs').toString().split(' '))
     if (project.hasProperty('prodJvmArgs')) jvmArgs.addAll(findProperty('prodJvmArgs').toString().split(' '))
     runDir = file('run-prod')

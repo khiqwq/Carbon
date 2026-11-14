@@ -61,7 +61,7 @@ public final class ScaleBench implements ClientModInitializer {
 
     private void tick(Minecraft minecraft) {
         ticks++;
-        if (stage == 0 && ticks > 40 && minecraft.gui.overlay() == null && minecraft.level == null && minecraft.gui.screen() != null) {
+        if (stage == 0 && ticks > 40 && minecraft.getOverlay() == null && minecraft.level == null && minecraft.screen != null) {
             stage = 1;
             String name = "carbon-scale-" + System.currentTimeMillis();
             LevelSettings settings = new LevelSettings(name, GameType.CREATIVE, new LevelSettings.DifficultySettings(Difficulty.PEACEFUL, false, false), true, WorldDataConfiguration.DEFAULT);
@@ -69,7 +69,7 @@ public final class ScaleBench implements ClientModInitializer {
                     registries -> registries.lookupOrThrow(Registries.WORLD_PRESET).getOrThrow(WorldPresets.FLAT).value().createWorldDimensions(),
                     new net.minecraft.client.gui.screens.TitleScreen());
         }
-        if (stage == 1 && minecraft.player != null && minecraft.getSingleplayerServer() != null && minecraft.gui.screen() == null) {
+        if (stage == 1 && minecraft.player != null && minecraft.getSingleplayerServer() != null && minecraft.screen == null) {
             stage = 2;
             ticks = 0;
             minecraft.options.framerateLimit().set(260);

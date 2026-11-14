@@ -1,37 +1,14 @@
 # 更新记录
 
-## 26.2.9-B.2-fabric — 2026-11-10
+## 26.1.2.9-B.2-fabric — 2026-11-14
 
-- 支持 Vulkan 后端：新增基于 RenderPipeline 的实例化路径，掉落物、物理化掉落物、通用物品提交、附魔光效与掉落物阴影在 Vulkan 下实例化。OpenGL 默认仍使用原有 GL 路径，`-Dcarbon.blaze3d=true` 可强制切换。
-- 修复 B 与 B.1 在 Vulkan 后端下渲染世界时崩溃：光影检测在判断后端之前调用了 OpenGL 接口，此前说明中的“Vulkan 下保持原版渲染”并未生效。
-- Iris 1.11.4 不支持 Vulkan 后端，光影仍只在 OpenGL 下可用。
-- 冒烟测试按后端输出设备信息；新增 `-Dcarbon.scale` 掉落物规模基准。
-
-## 26.2.9-B.1-fabric — 2026-11-10
-
-- 其他模组在原版渲染器中改写掉落物时，掉落物专用管线自动让位，保留其效果：antideath-survival-assistant 的 `disableItemEntityMulPose`、TweakerMore 的 `preciseItemEntityModel`、Meteor Client 的 ItemPhysics 以及隐藏掉落物的 NoRender。对方选项关闭后自动恢复；物品提交仍由通用管线实例化。
-
-## 26.2.9-B-fabric — 2026-11-10
-
-- 由上游 26.1.2 0.9-B 移植至 Fabric 26.2；对照与已知问题见 [Fabric 移植说明](FABRIC-PORT.md)。
-- 适配 26.2 的特性渲染准备、执行两段流程：物品与物品阴影在分组构建时截取，在对应分组执行时实例化绘制；Iris 在主帧准备与执行之间插入的阴影帧保留原生绘制。
-- 适配 26.2 的反向深度，独立绘制改用 `GL_GEQUAL`。
-- 拆分掉落物绘制方法，避开 Java 25.0.1 的 C2 编译器在编译原方法时的崩溃。
-- 只在 OpenGL 后端启用；Vulkan 后端下保持原版渲染。
-
-## 1.21.11.9-B-fabric — 2026-11-09
-
-- 派生着色器程序仅绑定有效的用户顶点属性，排除 `gl_VertexID` 等内建输入（同步上游 0.9-B）。
-- 新增 `/carbon config` 打开配置界面。
-- 模组图标与封面沿用上游的碳六元环，右下角加入表示 Fabric 版本的织布；清理仓库中的测试资料与发布文案。
-
-## 1.21.11.9-A-fabric — 2026-11-07
-
-- 由 26.1.2.9-A 回移至 Fabric 1.21.11；加载器差异、1.21.11 接口改写与已知问题见 [Fabric 移植说明](FABRIC-PORT.md)。
-- 物品特性改为在 1.21.11 统一写入 `BufferSource` 的 `ItemFeatureRenderer.render` 中截取提交；原版半透明物品图集在贴图仅含二值透明度时按镂空实例化。
-- 修复 Fabric 生产环境下代理收集器按方法名识别、`Item.isFoil` 反射查找与 Iris 阴影注入未重映射导致的静默失效；帧初始化提前到 Fabric 版 Iris 光影阴影通道之前。
-- 新增窗口上下文请求（OpenGL 4.6 至 4.0），无实例时跳过独立绘制的状态保存；物品与阴影特性注入改用 `@WrapOperation`，避免与其他修改同一方法的模组冲突。
-- 在 114 个模组的整合包隔离副本中，300 个掉落物由约 15 FPS 提升到约 44 FPS，1000 个由 3.8 FPS 提升到约 12.6 FPS，无掉落物时不降低帧率。修复该整合包中另一模组的栈遍历开销后，300 个掉落物由约 190 FPS 提升到约 570 FPS。
+- 由 26.2 Fabric 分支回移至 Fabric 26.1.2；对照与已知问题见 [Fabric 移植说明](FABRIC-PORT.md)。
+- 适配 26.1.2 的即时特性渲染：物品与物品阴影在遍历提交前截取可实例化的部分，该批剩余提交绘制完成后实例化绘制；26.2 的分组准备/执行两段接口不存在。
+- 26.1.2 只有 OpenGL 后端，移除 Vulkan 与 `-Dcarbon.blaze3d` 的 RenderPipeline 路径及其着色器、动态 uniform 轮换注入。
+- 26.1.2 使用常规深度（近处为 0），独立绘制改回 `GL_LEQUAL`，移除 26.2 的反向深度处理。
+- Iris 绘制改从 `RenderType` 内部的 `RenderSetup` 读取管线、纹理绑定与纹理变换，补充两个访问器 Mixin；顶点属性按 `VertexFormatElement` 的类型、数量与偏移绑定。
+- 可见实体提取回到 `LevelRenderer.extractVisibleEntities`，附魔光效按 `ItemFeatureRenderer.getFoilRenderType` 选择。
+- 改用 26.1.2 接口：`Minecraft.getMainRenderTarget`、`gui.getGuiTicks`、`minecraft.setScreen`、`TextureTransform.getMatrix`、`EntityType.ITEM`、`VertexFormat.Mode`。
 
 ## 26.1.2.9-A — 2026-11-07
 

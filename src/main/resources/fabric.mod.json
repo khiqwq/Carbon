@@ -18,7 +18,7 @@
   "mixins": ["carbon.mixins.json"],
   "depends": {
     "fabricloader": ">=0.19.3",
-    "minecraft": "~26.2",
+    "minecraft": "~26.1.2",
     "java": ">=25",
     "fabric-api": "*"
   },

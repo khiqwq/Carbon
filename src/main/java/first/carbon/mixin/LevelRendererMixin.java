@@ -6,8 +6,8 @@ import first.carbon.Carbon;
 import net.minecraft.client.Camera;
 import net.minecraft.client.DeltaTracker;
 import net.minecraft.client.multiplayer.ClientLevel;
+import net.minecraft.client.renderer.LevelRenderer;
 import net.minecraft.client.renderer.culling.Frustum;
-import net.minecraft.client.renderer.extract.LevelExtractor;
 import net.minecraft.client.renderer.state.level.LevelRenderState;
 import net.minecraft.world.entity.Entity;
 import org.spongepowered.asm.mixin.Mixin;
@@ -15,9 +15,9 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
-// 26.2 将实体提取从 LevelRenderer 移到 LevelExtractor，且在 Iris 阴影通道之前完成。
-@Mixin(LevelExtractor.class)
-public abstract class LevelExtractorMixin {
+// 26.1.2 的可见实体提取仍在 LevelRenderer 内，且在渲染与 Iris 阴影通道之前完成。
+@Mixin(LevelRenderer.class)
+public abstract class LevelRendererMixin {
     @Inject(method = "extractVisibleEntities", at = @At("HEAD"))
     private void carbon$frame(Camera camera, Frustum frustum, DeltaTracker delta, LevelRenderState state, CallbackInfo ci) {
         Carbon.RENDERER.beginFrame(camera, frustum, delta.getGameTimeDeltaPartialTick(false));

@@ -36,16 +36,11 @@ public final class Carbon implements ClientModInitializer {
     public static final Settings CONFIG = new Settings();
     private static Boolean openGl;
 
-    // 当前渲染后端是否为 OpenGL；Vulkan 下没有 GL 上下文，任何直接 GL 调用都会使游戏崩溃
+    // 当前渲染后端是否为 OpenGL；26.1.2 只有 OpenGL 后端，保留该判断供光影联动提前返回
     public static boolean openGl() {
         Boolean value = openGl;
-        if (value == null) openGl = value = "OpenGL".equals(com.mojang.blaze3d.systems.RenderSystem.getDevice().getDeviceInfo().backendName());
+        if (value == null) openGl = value = "OpenGL".equals(com.mojang.blaze3d.systems.RenderSystem.getDevice().getBackendName());
         return value;
-    }
-
-    // 是否经 RenderPipeline 绘制：Vulkan 必须，OpenGL 下可用 -Dcarbon.blaze3d=true 强制以便对照
-    public static boolean useB3d() {
-        return !openGl() || Boolean.getBoolean("carbon.blaze3d");
     }
 
     @Override
@@ -70,7 +65,7 @@ public final class Carbon implements ClientModInitializer {
                         .then(literal("config").executes(context -> {
                             // 聊天框在命令返回后才关闭，排到下一轮任务再打开。
                             var minecraft = net.minecraft.client.Minecraft.getInstance();
-                            minecraft.schedule(() -> minecraft.gui.setScreen(new first.carbon.client.ConfigScreen(null)));
+                            minecraft.schedule(() -> minecraft.setScreen(new first.carbon.client.ConfigScreen(null)));
                             return 1;
                         }))
                         .then(literal("enabled").then(argument("enabled", BoolArgumentType.bool()).executes(context -> {

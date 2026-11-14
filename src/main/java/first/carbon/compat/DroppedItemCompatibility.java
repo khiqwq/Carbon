@@ -83,7 +83,7 @@ public final class DroppedItemCompatibility {
             checks.add(new Check("Meteor Client no-render (item entities)", () -> {
                 Object registry = instance.invoke(null);
                 return registry != null && (boolean) isActive.invoke(registry, noRender)
-                        && (boolean) noEntity.invoke(module.invoke(registry, noRender), net.minecraft.world.entity.EntityTypes.ITEM);
+                        && (boolean) noEntity.invoke(module.invoke(registry, noRender), net.minecraft.world.entity.EntityType.ITEM);
             }));
         } catch (ReflectiveOperationException | LinkageError exception) {
             logger.debug("Meteor Client modules not found: {}", exception.toString());

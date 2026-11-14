@@ -181,24 +181,25 @@ public final class IrisCompatibility {
 
     public void draw(RenderType type, GpuBuffer vertices, int vertexBuffer, int indexBuffer, VertexFormat format, int indices,
                      int instances, int instanceBuffer, int mode, Vector3f camera, float clock, float scale, Vector3f center, Vector3f halfSize) {
-        // 26.2 的 PreparedRenderType 已包含当前模型视图、分层变换、纹理变换、裁剪与采样器
-        var prepared = type.prepare();
-        var target = prepared.outputTarget().getRenderTarget();
+        // 26.1.2 的渲染配置在 RenderType 内部的 RenderSetup：管线、纹理绑定与纹理变换
+        var setup = ((net.minecraft.client.renderer.rendertype.RenderSetup) (Object) ((first.carbon.mixin.RenderTypeAccessor) (Object) type).carbon$setup());
+        var target = type.outputTarget().getRenderTarget();
         var color = RenderSystem.outputColorTextureOverride != null ? RenderSystem.outputColorTextureOverride : target.getColorTextureView();
         var depth = target.useDepth ? (RenderSystem.outputDepthTextureOverride != null ? RenderSystem.outputDepthTextureOverride : target.getDepthTextureView()) : null;
-        var autoIndices = RenderSystem.getSequentialBuffer(com.mojang.blaze3d.PrimitiveTopology.QUADS);
+        var autoIndices = RenderSystem.getSequentialBuffer(VertexFormat.Mode.QUADS);
         var elements = autoIndices.getBuffer(indices);
         current = new Draw(vertexBuffer, indexBuffer, format, indices, instances, instanceBuffer, mode, camera, clock, scale, center, halfSize);
-        try (var pass = RenderSystem.getDevice().createCommandEncoder().createRenderPass(() -> "Carbon Iris items", color, Optional.empty(), depth, OptionalDouble.empty())) {
-            pass.setPipeline(prepared.pipeline());
-            var scissor = prepared.scissorState();
+        try (var pass = RenderSystem.getDevice().createCommandEncoder().createRenderPass(() -> "Carbon Iris items", color, OptionalInt.empty(), depth, OptionalDouble.empty())) {
+            pass.setPipeline(type.pipeline());
+            var scissor = RenderSystem.getScissorStateForRenderTypeDraws();
             if (scissor.enabled()) pass.enableScissor(scissor.x(), scissor.y(), scissor.width(), scissor.height());
             RenderSystem.bindDefaultUniforms(pass);
-            pass.setUniform("DynamicTransforms", prepared.dynamicTransforms());
-            pass.setVertexBuffer(0, vertices.slice());
+            pass.setUniform("DynamicTransforms", RenderSystem.getDynamicUniforms().writeTransform(RenderSystem.getModelViewMatrix(),
+                    new org.joml.Vector4f(1, 1, 1, 1), new org.joml.Vector3f(), ((first.carbon.mixin.RenderSetupAccessor) (Object) setup).carbon$textureTransform().getMatrix()));
+            pass.setVertexBuffer(0, vertices);
             pass.setIndexBuffer(elements, autoIndices.type());
-            for (var texture : prepared.textures()) pass.bindTexture(texture.name(), texture.textureView(), texture.sampler());
-            pass.drawIndexed(indices, 1, 0, 0, 0);
+            for (var texture : setup.getTextures().entrySet()) pass.bindTexture(texture.getKey(), texture.getValue().textureView(), texture.getValue().sampler());
+            pass.drawIndexed(indices, 1, 0, 0);
         } finally { current = null; }
     }
 
@@ -234,28 +235,23 @@ public final class IrisCompatibility {
                         glBindVertexArray(vertexArray);
                         glBindBuffer(GL_ARRAY_BUFFER, draw.vertexBuffer);
                         for (var element : draw.format.getElements()) {
-                            String name = element.name();
+                            String name = draw.format.getElementName(element);
                             if (name.equals("Position") || name.equals("Color") || name.equals("Normal") || name.startsWith("UV")) name = "iris_" + name;
                             int attribute = glGetAttribLocation(program.id, name);
                             if (attribute >= 0) {
-                                var component = element.format().componentType();
-                                int glType = switch (component) {
-                                    case FLOAT_32 -> GL_FLOAT;
-                                    case FLOAT_16 -> GL_HALF_FLOAT;
-                                    case SNORM_8, SINT_8 -> GL_BYTE;
-                                    case UNORM_8, UINT_8 -> GL_UNSIGNED_BYTE;
-                                    case SNORM_16, SINT_16 -> GL_SHORT;
-                                    case UNORM_16, UINT_16 -> GL_UNSIGNED_SHORT;
-                                    case SINT_32 -> GL_INT;
-                                    default -> GL_UNSIGNED_INT;
+                                int glType = switch (element.type()) {
+                                    case FLOAT -> GL_FLOAT;
+                                    case BYTE -> GL_BYTE;
+                                    case UBYTE -> GL_UNSIGNED_BYTE;
+                                    case SHORT -> GL_SHORT;
+                                    case USHORT -> GL_UNSIGNED_SHORT;
+                                    case INT -> GL_INT;
+                                    case UINT -> GL_UNSIGNED_INT;
                                 };
-                                boolean normalized = switch (component) {
-                                    case UNORM_8, SNORM_8, UNORM_16, SNORM_16 -> true;
-                                    default -> false;
-                                };
-                                int count = element.format().componentCount();
-                                if (name.equals("iris_UV1") || name.equals("iris_UV2") || name.equals("iris_Entity")) glVertexAttribIPointer(attribute, count, glType, draw.format.getVertexSize(), element.offset());
-                                else glVertexAttribPointer(attribute, count, glType, normalized, draw.format.getVertexSize(), element.offset());
+                                int count = element.count();
+                                int offset = draw.format.getOffset(element);
+                                if (name.equals("iris_UV1") || name.equals("iris_UV2") || name.equals("iris_Entity")) glVertexAttribIPointer(attribute, count, glType, draw.format.getVertexSize(), offset);
+                                else glVertexAttribPointer(attribute, count, glType, element.normalized(), draw.format.getVertexSize(), offset);
                                 glEnableVertexAttribArray(attribute);
                             }
                         }

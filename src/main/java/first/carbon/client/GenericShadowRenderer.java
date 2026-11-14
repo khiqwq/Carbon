@@ -2,7 +2,7 @@ package first.carbon.client;
 
 import com.mojang.blaze3d.systems.RenderSystem;
 import first.carbon.Carbon;
-import net.minecraft.client.renderer.feature.ShadowFeatureRenderer;
+import net.minecraft.client.renderer.SubmitNodeStorage;
 import net.minecraft.resources.Identifier;
 import org.lwjgl.system.MemoryStack;
 import org.lwjgl.system.MemoryUtil;
@@ -33,11 +33,9 @@ public final class GenericShadowRenderer {
         if (depth > 0) depth--;
     }
 
-    public List<ShadowFeatureRenderer.Submit> collect(List<ShadowFeatureRenderer.Submit> submissions) {
-        // RenderPipeline 路径下通用物品阴影交给原版，原版同样经 RenderPipeline 绘制
-        if (Carbon.useB3d()) return submissions;
+    public List<SubmitNodeStorage.ShadowSubmit> collect(List<SubmitNodeStorage.ShadowSubmit> submissions) {
         if (depth != 1 || failed || !Carbon.CONFIG.enabled.get() || Carbon.IRIS.active() || RenderSystem.getProjectionMatrixBuffer() == null
-                || !(net.minecraft.client.Minecraft.getInstance().gameRenderer.mainRenderTarget().getColorTexture() instanceof com.mojang.blaze3d.opengl.GlTexture)
+                || !(net.minecraft.client.Minecraft.getInstance().getMainRenderTarget().getColorTexture() instanceof com.mojang.blaze3d.opengl.GlTexture)
                 || RenderSystem.getShaderFog() == null || !org.lwjgl.opengl.GL.getCapabilities().OpenGL33) return submissions;
         if (program == 0 && submissions.stream().anyMatch(submit -> submit.radius() == 0.15f)) {
             int oldVao = glGetInteger(GL_VERTEX_ARRAY_BINDING), oldBuffer = glGetInteger(GL_ARRAY_BUFFER_BINDING);
@@ -57,7 +55,7 @@ public final class GenericShadowRenderer {
                 return submissions;
             } finally { glBindVertexArray(oldVao); glBindBuffer(GL_ARRAY_BUFFER, oldBuffer); }
         }
-        List<ShadowFeatureRenderer.Submit> remaining = new ArrayList<>(submissions.size());
+        List<SubmitNodeStorage.ShadowSubmit> remaining = new ArrayList<>(submissions.size());
         for (var submit : submissions) {
             if (submit.radius() != 0.15f) {
                 remaining.add(submit);

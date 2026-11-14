@@ -24,9 +24,6 @@ final class GpuShadowBatch implements AutoCloseable {
     private final int program;
     private final int vao;
     private final int buffer;
-    // RenderPipeline 路径：实例数据放在 GpuBuffer 中，由 B3d.drawShadows 绘制
-    private final boolean b3d;
-    private com.mojang.blaze3d.buffers.GpuBuffer instances;
     private ByteBuffer data;
     private ByteBuffer previous;
     private ByteBuffer updateData;
@@ -40,13 +37,7 @@ final class GpuShadowBatch implements AutoCloseable {
     int retainedCount;
     boolean flushed;
 
-    GpuShadowBatch() {
-        b3d = true;
-        program = vao = buffer = 0;
-    }
-
     GpuShadowBatch(int program) {
-        b3d = false;
         this.program = program;
         int oldVao = glGetInteger(GL_VERTEX_ARRAY_BINDING);
         int oldBuffer = glGetInteger(GL_ARRAY_BUFFER_BINDING);
@@ -138,29 +129,6 @@ final class GpuShadowBatch implements AutoCloseable {
         dirty = true;
     }
 
-    long drawB3d(org.joml.Matrix4fc view, org.joml.Vector3fc camera) {
-        long uploaded = 0;
-        if (count > 0 && !flushed) {
-            boolean changed = gpuCapacity < capacity || uploadedCount != count
-                    || dirty && data.slice(0, count * 48).mismatch(previous.slice(0, count * 48)) >= 0;
-            if (gpuCapacity < capacity) {
-                if (instances != null) instances.close();
-                instances = null;
-                gpuCapacity = capacity;
-            }
-            if (changed || instances == null) {
-                instances = B3d.upload(instances, "Carbon shadow instances", data, capacity * 48L, 0, count * 48);
-                MemoryUtil.memCopy(MemoryUtil.memAddress(data), MemoryUtil.memAddress(previous), count * 48L);
-                uploaded = count * 48L;
-            }
-            uploadedCount = count;
-            dirty = false;
-            B3d.drawShadows(instances, count, view, camera, texture);
-            flushed = true;
-        }
-        return uploaded;
-    }
-
     long draw(net.minecraft.client.renderer.state.level.CameraRenderState cameraState, GpuFrame frame) {
         long uploaded = 0;
         if (count > 0 && !flushed) {
@@ -195,14 +163,9 @@ final class GpuShadowBatch implements AutoCloseable {
 
     @Override
     public void close() {
-        if (b3d) {
-            if (instances != null) instances.close();
-            instances = null;
-        } else {
-            glDeleteProgram(program);
-            glDeleteVertexArrays(vao);
-            glDeleteBuffers(buffer);
-        }
+        glDeleteProgram(program);
+        glDeleteVertexArrays(vao);
+        glDeleteBuffers(buffer);
         if (data != null) {
             MemoryUtil.memFree(data);
             data = null;

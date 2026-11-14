@@ -109,16 +109,9 @@ public final class ItemBatchRenderer {
         updatedEntities = 0;
         shadowCollected = shadowFlushed = false;
         active = false;
-        boolean b3d = Carbon.useB3d();
         if (!failed && Carbon.IRIS.canInstance() && Carbon.CONFIG.enabled.get()
-                && (b3d ? !Carbon.IRIS.active() : minecraft.gameRenderer.mainRenderTarget().getColorTexture() instanceof GlTexture && GL.getCapabilities().OpenGL33)) {
-            if (b3d) {
-                // RenderPipeline 路径不需要 GL 程序与计算着色器，动画在顶点着色器中计算
-                if (shadows == null) {
-                    shadows = new GpuShadowBatch();
-                    logger.info("GPU item instancing ready through {} render pipelines", com.mojang.blaze3d.systems.RenderSystem.getDevice().getDeviceInfo().backendName());
-                }
-            } else if (program == 0) {
+                && minecraft.getMainRenderTarget().getColorTexture() instanceof GlTexture && GL.getCapabilities().OpenGL33) {
+            if (program == 0) {
                 try {
                     program = createProgram("instanced.vsh", "instanced.fsh");
                     entityProgram = createProgram(physics ? "physics_instanced.vsh" : "entity_instanced.vsh", "instanced.fsh");
@@ -139,7 +132,7 @@ public final class ItemBatchRenderer {
                     logger.error("Keeping vanilla item rendering", exception);
                 }
             }
-            active = !failed && (b3d || program != 0);
+            active = !failed && program != 0;
         }
         boolean shadowOption = minecraft.options.entityShadows().get() && !Carbon.IRIS.active();
         boolean skip = Carbon.CONFIG.skipVisibilityChecks.get();
@@ -147,7 +140,7 @@ public final class ItemBatchRenderer {
         reused = active && dedicated && skip == sceneSkip && sceneValid && stationary && !sceneDirty && !blockCacheDirty
                 && (skip || position.equals(sceneCamera) && visibilityMatrix.equals(sceneMatrix))
                 && level.getSkyDarken() == sceneSkyDarken && minecraft.getCameraEntity() == sceneCameraEntity
-                && (sceneTickStable || level.getGameTime() == sceneTick && minecraft.gui.hud.getGuiTicks() == sceneFoilTick)
+                && (sceneTickStable || level.getGameTime() == sceneTick && minecraft.gui.getGuiTicks() == sceneFoilTick)
                 && level.getGameTime() / 24000 == sceneTick / 24000
                 && sceneEntityCount == level.getEntityCount() && Entity.getViewScale() == sceneViewScale
                 && minecraft.options.getEffectiveRenderDistance() == sceneRenderDistance
@@ -217,7 +210,7 @@ public final class ItemBatchRenderer {
             sceneEntityDistance = minecraft.options.entityDistanceScaling().get();
             sceneSkyDarken = level.getSkyDarken();
             sceneTick = level.getGameTime();
-            sceneFoilTick = minecraft.gui.hud.getGuiTicks();
+            sceneFoilTick = minecraft.gui.getGuiTicks();
             sceneEntityCount = level.getEntityCount();
             sceneShadows = renderShadows;
             sceneSkip = skip;
@@ -255,11 +248,11 @@ public final class ItemBatchRenderer {
                         : !dispatcher.shouldRender(item, frustum, camera.x, camera.y, camera.z)) continue;
                 ItemStack stack = item.getItem();
                 EntityCache cache = ((EntityCacheAccess) item).imo$cache();
-                if (cache.generation != generation || (cache.stack != stack || cache.version != ((ComponentVersion) stack.getComponents()).imo$version() || cache.dynamicFoil && cache.foil != ((FoilState) (Object) stack).imo$foil(minecraft.gui.hud.getGuiTicks())) || cache.batch != null && cache.batch.closed) {
+                if (cache.generation != generation || (cache.stack != stack || cache.version != ((ComponentVersion) stack.getComponents()).imo$version() || cache.dynamicFoil && cache.foil != ((FoilState) (Object) stack).imo$foil(minecraft.gui.getGuiTicks())) || cache.batch != null && cache.batch.closed) {
                     cache.generation = generation;
                     cache.stack = stack;
                     cache.version = ((ComponentVersion) stack.getComponents()).imo$version();
-                    cache.foil = ((FoilState) (Object) stack).imo$foil(minecraft.gui.hud.getGuiTicks());
+                    cache.foil = ((FoilState) (Object) stack).imo$foil(minecraft.gui.getGuiTicks());
                     cache.dynamicFoil = !stack.has(net.minecraft.core.component.DataComponents.ENCHANTMENT_GLINT_OVERRIDE) && dynamicFoil.computeIfAbsent(stack.getItem().getClass(), type -> {
                         try { return type.getMethod("isFoil", ItemStack.class).getDeclaringClass() != net.minecraft.world.item.Item.class; }
                         catch (ReflectiveOperationException ignored) { return true; }
@@ -415,27 +408,10 @@ public final class ItemBatchRenderer {
                 drawIris(state.viewRotationMatrix, state.pos, false);
             } else if (instances > 0 || shadows != null && shadows.count > 0) {
                 // 没有实例和阴影时跳过状态保存与帧缓冲切换
-                if (Carbon.useB3d()) drawB3d(state);
-                else drawFrame(state);
+                drawFrame(state);
             }
             active = false;
             evictStale();
-        }
-    }
-
-    private void drawB3d(CameraRenderState state) {
-        var camera = new org.joml.Vector3f((float) (state.pos.x - originX), (float) (state.pos.y - originY), (float) (state.pos.z - originZ));
-        List<GpuItemBatch> batches = new ArrayList<>();
-        for (var bucket : buckets.values()) for (var batch : bucket) if (batch.count > 0 && !batch.flushed) batches.add(batch);
-        if (!batches.isEmpty()) {
-            // 先上传以计入统计，drawItems 中的上传随后直接返回
-            for (var batch : batches) uploadedBytes += batch.upload();
-            drawCalls += B3d.drawItems(physics ? B3d.Kind.PHYSICS : B3d.Kind.DROPPED, batches, state.viewRotationMatrix, camera, clock, "Carbon dropped items");
-            for (var batch : batches) batch.flushed = true;
-        }
-        if (shadows != null && shadows.count > 0) {
-            uploadedBytes += shadows.drawB3d(state.viewRotationMatrix, camera);
-            shadowDrawCalls++;
         }
     }
 
@@ -474,7 +450,7 @@ public final class ItemBatchRenderer {
         }
         glDisable(GL_BLEND);
         glDepthMask(true);
-        glDepthFunc(GL_GEQUAL);
+        glDepthFunc(GL_LEQUAL);
         batch.flushed = true;
     }
 
@@ -495,7 +471,7 @@ public final class ItemBatchRenderer {
         glDepthFunc(GL_EQUAL);
         try (MemoryStack memory = MemoryStack.stackPush()) {
             glUniformMatrix4fv(glGetUniformLocation(drawProgram, "TextureMat"), false,
-                    net.minecraft.client.renderer.rendertype.TextureTransform.GLINT_TEXTURING.createMatrix().get(memory.mallocFloat(16)));
+                    net.minecraft.client.renderer.rendertype.TextureTransform.GLINT_TEXTURING.getMatrix().get(memory.mallocFloat(16)));
         }
         glUniform1f(glGetUniformLocation(drawProgram, "GlintAlpha"), Minecraft.getInstance().options.glintStrength().get().floatValue());
     }

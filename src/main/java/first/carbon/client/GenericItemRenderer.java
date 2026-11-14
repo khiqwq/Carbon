@@ -5,6 +5,7 @@ import first.carbon.Carbon;
 import it.unimi.dsi.fastutil.ints.IntArrayList;
 import it.unimi.dsi.fastutil.ints.IntList;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.renderer.SubmitNodeStorage;
 import net.minecraft.client.renderer.feature.ItemFeatureRenderer;
 import net.minecraft.client.renderer.item.ItemStackRenderState;
 import net.minecraft.client.renderer.rendertype.TextureTransform;
@@ -23,11 +24,11 @@ import java.util.Map;
 import static org.lwjgl.opengl.GL43.*;
 
 // 在原生物品通道内合批，保留提交者提供的姿态与光照。
-// 26.2 先为整帧准备所有特性分组再逐阶段执行：准备阶段截取可实例化的提交，执行到对应物品分组时一并绘制。
+// 26.1.2 的物品特性逐个提交直接绘制：遍历前移出可实例化的提交，绘制完该批剩余提交后补上实例。
 public final class GenericItemRenderer {
-    // 已准备但尚未关闭的特性帧数；Iris 的阴影帧嵌套在主帧的准备与执行之间，只在最外层帧实例化
+    // 已进入但尚未结束的特性阶段数；Iris 的阴影帧嵌套在主帧内，只在最外层阶段实例化
     private int depth;
-    private int groups, firstGroup = -1;
+    private boolean pending;
     private final Map<Key, GpuItemBatch> meshes = new HashMap<>();
     private final Matrix4f identity = new Matrix4f();
     private int frame, program, framebuffer;
@@ -45,25 +46,23 @@ public final class GenericItemRenderer {
         if (depth > 0) depth--;
     }
 
-    // 每个特性帧执行不透明阶段前补绘掉落物的 Iris 光影阴影；阴影帧嵌套在主帧之内，drawIrisShadows 自行判断是否处于阴影通道
+    // 不透明阶段绘制前补绘掉落物的 Iris 光影阴影；阴影帧嵌套在主帧之内，drawIrisShadows 自行判断是否处于阴影通道
     public void beforeSolid() {
         if (active && Carbon.IRIS.active()) Carbon.RENDERER.drawIrisShadows();
     }
 
     private void begin() {
-        groups = 0;
-        firstGroup = -1;
+        pending = false;
         if (irisGeneration != Carbon.IRIS.generation) {
             invalidate();
             irisGeneration = Carbon.IRIS.generation;
         }
-        boolean b3d = Carbon.useB3d();
         active = !failed && Carbon.CONFIG.enabled.get() && Carbon.IRIS.canInstance() && Carbon.IRIS.canSubmit()
-                && (b3d || Minecraft.getInstance().gameRenderer.mainRenderTarget().getColorTexture() instanceof com.mojang.blaze3d.opengl.GlTexture
-                && GL.getCapabilities().OpenGL33) && RenderSystem.getProjectionMatrixBuffer() != null && RenderSystem.getShaderFog() != null;
-        frame = Minecraft.getInstance().gui.hud.getGuiTicks();
+                && Minecraft.getInstance().getMainRenderTarget().getColorTexture() instanceof com.mojang.blaze3d.opengl.GlTexture
+                && GL.getCapabilities().OpenGL33 && RenderSystem.getProjectionMatrixBuffer() != null && RenderSystem.getShaderFog() != null;
+        frame = Minecraft.getInstance().gui.getGuiTicks();
         instances = drawCalls = 0;
-        if (active && !Carbon.IRIS.active() && !b3d && program == 0) {
+        if (active && !Carbon.IRIS.active() && program == 0) {
             try {
                 program = Carbon.RENDERER.createProgram("generic_instanced.vsh", "generic_instanced.fsh");
                 glUniformBlockBinding(program, glGetUniformBlockIndex(program, "Projection"), 4);
@@ -87,24 +86,25 @@ public final class GenericItemRenderer {
         }
     }
 
-    // 过滤可实例化的提交，其余交还原版物品特性渲染；分组序号与 RenderTypeFeatureRenderer 的执行序号一致。
-    public List<ItemFeatureRenderer.Submit> collect(List<ItemFeatureRenderer.Submit> submits) {
-        int group = groups++;
+    // 过滤可实例化的提交，其余交还原版物品特性渲染。
+    public List<SubmitNodeStorage.ItemSubmit> collect(List<SubmitNodeStorage.ItemSubmit> submits) {
         if (!active || depth != 1) return submits;
-        List<ItemFeatureRenderer.Submit> remaining = null;
+        List<SubmitNodeStorage.ItemSubmit> remaining = null;
         for (int i = 0; i < submits.size(); i++) {
             var submit = submits.get(i);
             if (submit(submit)) {
                 if (remaining == null) remaining = new java.util.ArrayList<>(submits.subList(0, i));
-                if (firstGroup < 0) firstGroup = group;
+                pending = true;
             } else if (remaining != null) remaining.add(submit);
         }
         return remaining == null ? submits : remaining;
     }
 
-    private boolean submit(ItemFeatureRenderer.Submit submit) {
+    // 与原版 hasTranslucency 一致：任一四边形使用带混合的渲染类型即交还原版排序绘制
+    private boolean submit(SubmitNodeStorage.ItemSubmit submit) {
         if (!active || submit.outlineColor() != 0 || submit.overlayCoords() != OverlayTexture.NO_OVERLAY
-                || submit.foilType() == ItemStackRenderState.FoilType.SPECIAL || submit.quads().isEmpty() || submit.hasTranslucency()) return false;
+                || submit.foilType() == ItemStackRenderState.FoilType.SPECIAL || submit.quads().isEmpty()
+                || submit.quads().stream().anyMatch(quad -> quad.materialInfo().itemRenderType().hasBlending())) return false;
         int[] captured = Carbon.IRIS.capture(submit);
         try {
             Key key = new Key(List.copyOf(submit.quads()), new IntArrayList(submit.tintLayers()), submit.foilType(), Carbon.IRIS.identifiers());
@@ -133,8 +133,11 @@ public final class GenericItemRenderer {
         } finally { Carbon.IRIS.restore(captured); }
     }
 
-    public void execute(int group) {
-        if (depth == 1 && group == firstGroup) flush();
+    public void execute() {
+        if (depth == 1 && pending) {
+            pending = false;
+            flush();
+        }
     }
 
     private void flush() {
@@ -153,12 +156,6 @@ public final class GenericItemRenderer {
                         }
                     }
                 }
-            } else if (Carbon.useB3d()) {
-                java.util.List<GpuItemBatch> batches = new java.util.ArrayList<>();
-                for (GpuItemBatch batch : meshes.values()) if (batch.count != 0) batches.add(batch);
-                int draws = B3d.drawItems(B3d.Kind.GENERIC, batches, RenderSystem.getModelViewStack(), new org.joml.Vector3f(), 0, "Carbon items");
-                drawCalls += draws;
-                totalDraws += draws;
             } else try (GpuFrame gpu = new GpuFrame(framebuffer, true); MemoryStack memory = MemoryStack.stackPush()) {
                 var scissor = RenderSystem.getScissorStateForRenderTypeDraws();
                 if (scissor.enabled()) { glEnable(GL_SCISSOR_TEST); glScissor(scissor.x(), scissor.y(), scissor.width(), scissor.height()); }
@@ -181,7 +178,7 @@ public final class GenericItemRenderer {
                                 glDepthMask(false);
                             }
                             glUniformMatrix4fv(glGetUniformLocation(program, "TextureMat"), false,
-                                    (pass == 0 ? identity : TextureTransform.GLINT_TEXTURING.createMatrix()).get(memory.mallocFloat(16)));
+                                    (pass == 0 ? identity : TextureTransform.GLINT_TEXTURING.getMatrix()).get(memory.mallocFloat(16)));
                             glUniform1f(glGetUniformLocation(program, "GlintAlpha"), Minecraft.getInstance().options.glintStrength().get().floatValue());
                             for (var mesh : batch.meshes) {
                                 if (mesh.cull) glEnable(GL_CULL_FACE); else glDisable(GL_CULL_FACE);
@@ -192,7 +189,7 @@ public final class GenericItemRenderer {
                             }
                         }
                         glDisable(GL_BLEND);
-                        glDepthFunc(GL_GEQUAL);
+                        glDepthFunc(GL_LEQUAL);
                         glDepthMask(true);
                     }
                 }
@@ -208,7 +205,7 @@ public final class GenericItemRenderer {
         program = framebuffer = 0;
         meshBytes = 0;
         active = failed = false;
-        firstGroup = -1;
+        pending = false;
     }
 
     private record Key(List<BakedQuad> quads, IntList tints, ItemStackRenderState.FoilType foil, long identifiers) { }

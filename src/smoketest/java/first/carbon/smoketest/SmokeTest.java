@@ -34,14 +34,14 @@ public final class SmokeTest implements ClientModInitializer {
 
     private void tick(Minecraft minecraft) {
         ticks++;
-        if (stage == 0 && ticks > 40 && minecraft.gui.overlay() == null && minecraft.level == null && minecraft.gui.screen() != null) {
+        if (stage == 0 && ticks > 40 && minecraft.getOverlay() == null && minecraft.level == null && minecraft.screen != null) {
             stage = 1;
             String name = "carbon-smoke-" + System.currentTimeMillis();
             LevelSettings settings = new LevelSettings(name, GameType.CREATIVE, new LevelSettings.DifficultySettings(Difficulty.PEACEFUL, false, false), true, WorldDataConfiguration.DEFAULT);
             minecraft.createWorldOpenFlows().createFreshLevel(name, settings, new WorldOptions(1L, false, false),
                     registries -> registries.lookupOrThrow(Registries.WORLD_PRESET).getOrThrow(WorldPresets.FLAT).value().createWorldDimensions(), new net.minecraft.client.gui.screens.TitleScreen());
         }
-        if (stage == 1 && minecraft.player != null && minecraft.level != null && minecraft.getSingleplayerServer() != null && minecraft.gui.screen() == null) {
+        if (stage == 1 && minecraft.player != null && minecraft.level != null && minecraft.getSingleplayerServer() != null && minecraft.screen == null) {
             stage = 2;
             ticks = 0;
             var player = minecraft.player;
@@ -61,7 +61,7 @@ public final class SmokeTest implements ClientModInitializer {
                 serverPlayer.setXRot(45);
                 ItemStack book = new ItemStack(Items.ENCHANTED_BOOK);
                 ItemStack[] stacks = {new ItemStack(Items.DIAMOND_SWORD), new ItemStack(Items.STONE, 32), new ItemStack(Items.GLASS),
-                        book, new ItemStack(Items.APPLE, 64), new ItemStack(Items.OAK_LOG, 3), new ItemStack(Items.COMPASS), new ItemStack(Items.STAINED_GLASS.white())};
+                        book, new ItemStack(Items.APPLE, 64), new ItemStack(Items.OAK_LOG, 3), new ItemStack(Items.COMPASS), new ItemStack(Items.WHITE_STAINED_GLASS)};
                 if (Boolean.getBoolean("carbon.smoke.noTranslucent")) {
                     stacks[3] = new ItemStack(Items.BREAD, 5);
                     stacks[6] = new ItemStack(Items.GOLD_INGOT);
@@ -125,10 +125,9 @@ public final class SmokeTest implements ClientModInitializer {
 
     private void report(Minecraft minecraft, String name) {
         logger.info("[{}] fps={} entities={} carbon: {}", name, minecraft.getFps(), minecraft.level.getEntityCount(), Carbon.RENDERER.statistics());
-        var device = com.mojang.blaze3d.systems.RenderSystem.getDevice().getDeviceInfo();
         if (Carbon.openGl()) logger.info("GL33={} GL43={} version={} renderer={}", org.lwjgl.opengl.GL.getCapabilities().OpenGL33, org.lwjgl.opengl.GL.getCapabilities().OpenGL43,
                 org.lwjgl.opengl.GL11.glGetString(org.lwjgl.opengl.GL11.GL_VERSION), org.lwjgl.opengl.GL11.glGetString(org.lwjgl.opengl.GL11.GL_RENDERER));
-        else logger.info("backend={} device={} driver={}", device.backendName(), device.name(), device.driverInfo());
+        else logger.info("backend={}", com.mojang.blaze3d.systems.RenderSystem.getDevice().getBackendName());
         for (Object target : new Object[]{Carbon.RENDERER, Carbon.GENERIC, Carbon.SHADOWS, Carbon.IRIS}) {
             StringBuilder state = new StringBuilder(target.getClass().getSimpleName()).append(':');
             for (var field : target.getClass().getDeclaredFields()) {
@@ -142,6 +141,6 @@ public final class SmokeTest implements ClientModInitializer {
             }
             logger.info(state.toString());
         }
-        Screenshot.grab(minecraft.gameDirectory, "carbon-" + name + ".png", minecraft.gameRenderer.mainRenderTarget(), 1, message -> logger.info(message.getString()));
+        Screenshot.grab(minecraft.gameDirectory, "carbon-" + name + ".png", minecraft.getMainRenderTarget(), 1, message -> logger.info(message.getString()));
     }
 }
