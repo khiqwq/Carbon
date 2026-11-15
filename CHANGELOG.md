@@ -1,5 +1,13 @@
 # 更新记录
 
+## 1.21.4.9-B-fabric — 2026-11-15
+
+- 移植至 Fabric 1.21.4（Fabric Loader 0.16+、Fabric API 0.119.4、Mod Menu 13.0.4、Sodium 0.6.13、Iris 1.8.8），渲染核心、着色器与 Iris 桥接与 1.21.1.9-B-fabric 一致。
+- 适配 1.21.4 的物品模型解析：`ItemModelResolver` / `ItemStackRenderState` 取代 shaper 与覆盖表，`renderModelLists` 改为接收 `int[] tintLayers`，物品经渲染状态关联；接口差异见 [Fabric 移植说明](FABRIC-PORT.md)。
+- 适配实体渲染状态（`EntityRenderer<T, S>`、`ItemEntityRenderer.render(state, …)`、`renderShadow` 接收 `EntityRenderState`）、`CompiledShaderProgram` 着色器、`FogParameters` 雾参数与 `NativeImage.getPixel`。
+- 渲染通道更名：`entityTranslucentCull` → `itemEntityTranslucentCull`，`entityGlintDirect` → `armorEntityGlint`。
+- 冒烟测试（GTX 750、Sodium 0.6.13、Iris 1.8.8）：混合场景 349 个掉落物合为 695 个实例、31–33 次绘制与 1 次阴影绘制；静态物品 399 个合为 895 个实例、8 次绘制，743 次场景复用 / 58 次重建；同一场景间隔 2 tick 与原生渲染截图对比，天空区像素差 0%。
+
 ## 1.21.1.9-B-fabric — 2026-11-09
 
 - 派生着色器程序仅绑定有效的用户顶点属性，排除 `gl_VertexID` 等内建输入（同步上游 0.9-B）。

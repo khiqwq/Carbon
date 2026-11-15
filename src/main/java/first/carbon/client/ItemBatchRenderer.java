@@ -10,9 +10,10 @@ import it.unimi.dsi.fastutil.objects.Reference2ObjectOpenHashMap;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.Camera;
 import net.minecraft.client.renderer.entity.ItemEntityRenderer;
+import net.minecraft.client.renderer.CompiledShaderProgram;
+import net.minecraft.client.renderer.FogParameters;
 import net.minecraft.client.renderer.MultiBufferSource;
 import net.minecraft.client.renderer.RenderType;
-import net.minecraft.client.renderer.ShaderInstance;
 import net.minecraft.client.renderer.texture.SpriteContents;
 import net.minecraft.client.renderer.texture.TextureAtlas;
 import net.minecraft.client.resources.model.BakedModel;
@@ -40,12 +41,14 @@ import java.util.Locale;
 import static org.lwjgl.opengl.GL33.*;
 
 public final class ItemBatchRenderer {
+    // 渲染状态只携带几何，物品由解析阶段记录并在渲染期间作为当前上下文。
+    private static final List<ItemStack> context = new ArrayList<>();
     private final Logger logger = LoggerFactory.getLogger("Carbon");
     private final Int2ObjectOpenHashMap<List<GpuItemBatch>> buckets = new Int2ObjectOpenHashMap<>();
     private final Reference2ObjectOpenHashMap<ItemStack, StackCache> stacks = new Reference2ObjectOpenHashMap<>();
     private final Reference2ObjectOpenHashMap<MultiBufferSource.BufferSource, Source> sources = new Reference2ObjectOpenHashMap<>();
     private final IdentityHashMap<RenderType, Boolean> supportedTypes = new IdentityHashMap<>();
-    private final Reference2ObjectOpenHashMap<ShaderInstance, int[]> samplerUnits = new Reference2ObjectOpenHashMap<>();
+    private final Reference2ObjectOpenHashMap<CompiledShaderProgram, int[]> samplerUnits = new Reference2ObjectOpenHashMap<>();
     final IdentityHashMap<SpriteContents, Boolean> opaqueSprites = new IdentityHashMap<>();
     private final int[] uniforms = new int[16];
     private int program;
@@ -70,8 +73,15 @@ public final class ItemBatchRenderer {
     public int shadowInstances;
     public int shadowDrawCalls;
 
-    public void beginFrame() {
-        if (irisGeneration != Carbon.IRIS.generation) {
+    public static void pushStack(ItemStack stack) {
+        context.add(stack);
+    }
+
+    public static void popStack() {
+        if (!context.isEmpty()) context.remove(context.size() - 1);
+    }
+
+    public void beginFrame() {        if (irisGeneration != Carbon.IRIS.generation) {
             clear();
             irisGeneration = Carbon.IRIS.generation;
         }
@@ -177,7 +187,7 @@ public final class ItemBatchRenderer {
         boolean submitted = false;
         Minecraft minecraft = Minecraft.getInstance();
         if (world && shadows != null && !shadows.flushed && Carbon.CONFIG.enabled.get()
-                && buffers == minecraft.renderBuffers().bufferSource() && entity.getClass() == ItemEntity.class
+                && entity != null && buffers == minecraft.renderBuffers().bufferSource() && entity.getClass() == ItemEntity.class
                 && minecraft.level.getEntity(entity.getId()) == entity
                 && minecraft.getEntityRenderDispatcher().getRenderer(entity).getClass() == ItemEntityRenderer.class) {
             shadows.add(entity, partialTick, strength, originX, originY, originZ);
@@ -208,9 +218,10 @@ public final class ItemBatchRenderer {
         world = false;
     }
 
-    public boolean submit(BakedModel model, ItemStack stack, int light, int overlay, PoseStack pose, VertexConsumer vertices) {
+    public boolean submit(BakedModel model, int[] tintLayers, int light, int overlay, PoseStack pose, VertexConsumer vertices) {
         boolean submitted = false;
-        if (!capturing && !failed && Carbon.CONFIG.enabled.get() && Carbon.IRIS.canInstance() && !stack.isEmpty()
+        ItemStack stack = context.isEmpty() ? null : context.get(context.size() - 1);
+        if (stack != null && !capturing && !failed && Carbon.CONFIG.enabled.get() && Carbon.IRIS.canInstance() && !stack.isEmpty()
                 && model.getClass() == SimpleBakedModel.class && GL.getCapabilities().OpenGL33) {
             Target first = vertices instanceof Target target ? target : null;
             Target second = null;
@@ -261,7 +272,7 @@ public final class ItemBatchRenderer {
                         }
                         if (batch == null) {
                             try {
-                                batch = new GpuItemBatch(stack, model, this);
+                                batch = new GpuItemBatch(stack, model, tintLayers, this);
                                 if (bucket == null) {
                                     bucket = new ArrayList<>();
                                     buckets.put(hash, bucket);
@@ -306,10 +317,9 @@ public final class ItemBatchRenderer {
         boolean supported = type == RenderType.entitySolid(TextureAtlas.LOCATION_BLOCKS)
                 || type == RenderType.entityCutout(TextureAtlas.LOCATION_BLOCKS)
                 || type == RenderType.entityCutoutNoCull(TextureAtlas.LOCATION_BLOCKS)
-                || type == RenderType.entityTranslucentCull(TextureAtlas.LOCATION_BLOCKS)
                 || type == RenderType.itemEntityTranslucentCull(TextureAtlas.LOCATION_BLOCKS)
                 || type == RenderType.glint() || type == RenderType.glintTranslucent()
-                || type == RenderType.entityGlint() || type == RenderType.entityGlintDirect();
+                || type == RenderType.entityGlint() || type == RenderType.armorEntityGlint();
         supportedTypes.put(type, supported);
         return supported;
     }
@@ -322,18 +332,19 @@ public final class ItemBatchRenderer {
             int buffer = glGetInteger(GL_ARRAY_BUFFER_BINDING);
             int previousProgram = glGetInteger(GL_CURRENT_PROGRAM);
             type.setupRenderState();
-            ShaderInstance shader = Carbon.IRIS.shader(RenderSystem.getShader(), type, false);
+            CompiledShaderProgram shader = Carbon.IRIS.shader(RenderSystem.getShader(), type, false);
             try (MemoryStack memory = MemoryStack.stackPush()) {
                 if (shader != null) {
                     shader.setDefaultUniforms(VertexFormat.Mode.QUADS, RenderSystem.getModelViewMatrix(), RenderSystem.getProjectionMatrix(), Minecraft.getInstance().getWindow());
                     shader.apply();
                 }
                 if (!Carbon.IRIS.usesShader(shader)) {
+                    FogParameters fog = RenderSystem.getShaderFog();
                     glUseProgram(program);
                     glUniformMatrix4fv(uniforms[0], false, RenderSystem.getModelViewMatrix().get(memory.mallocFloat(16)));
                     glUniformMatrix4fv(uniforms[1], false, RenderSystem.getProjectionMatrix().get(memory.mallocFloat(16)));
                     glUniformMatrix4fv(uniforms[2], false, RenderSystem.getTextureMatrix().get(memory.mallocFloat(16)));
-                    glUniform1i(uniforms[3], RenderSystem.getShaderFogShape().getIndex());
+                    glUniform1i(uniforms[3], fog.shape().getIndex());
                     if (shader != null && shader.LIGHT0_DIRECTION != null && shader.LIGHT1_DIRECTION != null) {
                         glUniform3fv(uniforms[4], shader.LIGHT0_DIRECTION.getFloatBuffer());
                         glUniform3fv(uniforms[5], shader.LIGHT1_DIRECTION.getFloatBuffer());
@@ -343,21 +354,20 @@ public final class ItemBatchRenderer {
                         units = new int[]{0, 1, 2};
                         if (shader != null) {
                             for (int sampler = 0; sampler < 3; sampler++) {
-                                int location = glGetUniformLocation(shader.getId(), "Sampler" + sampler);
-                                if (location >= 0) units[sampler] = glGetUniformi(shader.getId(), location);
+                                int location = glGetUniformLocation(shader.getProgramId(), "Sampler" + sampler);
+                                if (location >= 0) units[sampler] = glGetUniformi(shader.getProgramId(), location);
                             }
                         }
                         samplerUnits.put(shader, units);
                     }
                     for (int sampler = 0; sampler < 3; sampler++) glUniform1i(uniforms[6 + sampler], units[sampler]);
                     glUniform4fv(uniforms[9], RenderSystem.getShaderColor());
-                    glUniform1f(uniforms[10], RenderSystem.getShaderFogStart());
-                    glUniform1f(uniforms[11], RenderSystem.getShaderFogEnd());
-                    glUniform4fv(uniforms[12], RenderSystem.getShaderFogColor());
-                    glUniform1i(uniforms[13], type == RenderType.glint() || type == RenderType.glintTranslucent() || type == RenderType.entityGlint() || type == RenderType.entityGlintDirect() ? 1 : 0);
+                    glUniform1f(uniforms[10], fog.start());
+                    glUniform1f(uniforms[11], fog.end());
+                    glUniform4f(uniforms[12], fog.red(), fog.green(), fog.blue(), fog.alpha());
+                    glUniform1i(uniforms[13], type == RenderType.glint() || type == RenderType.glintTranslucent() || type == RenderType.entityGlint() || type == RenderType.armorEntityGlint() ? 1 : 0);
                     glUniform1f(uniforms[14], RenderSystem.getShaderGlintAlpha());
-                    glUniform1i(uniforms[15], type == RenderType.entityTranslucentCull(TextureAtlas.LOCATION_BLOCKS)
-                            || type == RenderType.itemEntityTranslucentCull(TextureAtlas.LOCATION_BLOCKS) ? 0 : 1);
+                    glUniform1i(uniforms[15], type == RenderType.itemEntityTranslucentCull(TextureAtlas.LOCATION_BLOCKS) ? 0 : 1);
                 }
                 for (Submission draw : draws.values()) {
                     if (draw.count > 0) {
@@ -479,6 +489,10 @@ public final class ItemBatchRenderer {
     public interface VertexPair {
         VertexConsumer imo$first();
         VertexConsumer imo$second();
+    }
+
+    public interface StackHolder {
+        void imo$stack(ItemStack stack);
     }
 
     private static final class Source {

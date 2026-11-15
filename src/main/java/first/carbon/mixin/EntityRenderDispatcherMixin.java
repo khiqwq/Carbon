@@ -7,6 +7,8 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.MultiBufferSource;
 import net.minecraft.client.renderer.entity.EntityRenderDispatcher;
 import net.minecraft.client.renderer.entity.ItemEntityRenderer;
+import net.minecraft.client.renderer.entity.state.EntityRenderState;
+import net.minecraft.client.renderer.entity.state.ItemEntityRenderState;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.item.ItemEntity;
 import net.minecraft.world.level.LevelReader;
@@ -29,7 +31,7 @@ public abstract class EntityRenderDispatcherMixin implements DroppedItemBatchRen
     }
 
     @Inject(method = "render", at = @At("HEAD"), cancellable = true)
-    private void imo$direct(Entity entity, double x, double y, double z, float yaw, float partialTick, PoseStack pose, MultiBufferSource buffers, int light, CallbackInfo ci) {
+    private void imo$direct(Entity entity, double x, double y, double z, float partialTick, PoseStack pose, MultiBufferSource buffers, int light, CallbackInfo ci) {
         if (entity instanceof ItemEntity item && !Carbon.IRIS.shadowPass() && !renderHitBoxes && !item.hasCustomName() && !item.shouldShowName()
                 && !item.displayFireAnimation() && !item.isCurrentlyGlowing()
                 && ((EntityRenderDispatcher) (Object) this).getRenderer(item).getClass() == ItemEntityRenderer.class) {
@@ -40,10 +42,11 @@ public abstract class EntityRenderDispatcherMixin implements DroppedItemBatchRen
             }
         }
     }
+
     @Inject(method = "renderShadow", at = @At("HEAD"), cancellable = true)
-    private static void imo$shadow(PoseStack pose, MultiBufferSource buffers, Entity entity, float strength, float partialTick, LevelReader level, float radius, CallbackInfo ci) {
-        if (entity instanceof ItemEntity item && radius == 0.15f
-                && Carbon.RENDERER.submitShadow(item, partialTick, strength, buffers)) {
+    private static void imo$shadow(PoseStack pose, MultiBufferSource buffers, EntityRenderState state, float strength, float partialTick, LevelReader level, float radius, CallbackInfo ci) {
+        if (radius == 0.15f && state instanceof ItemEntityRenderState item
+                && Carbon.RENDERER.submitShadow(Carbon.DROPPED_RENDERER.entity(item), partialTick, strength, buffers)) {
             ci.cancel();
         }
     }

@@ -1,6 +1,6 @@
 # Carbon（碳）
 
-客户端 GPU 物品模型渲染优化模组，本分支适用于 Minecraft 1.21.1 / Fabric Loader 0.16 及以上，需要 Fabric API，使用 Java 21，MIT 许可证。NeoForge 版本见 `master` 分支，移植对照与已知问题见 [Fabric 移植说明](FABRIC-PORT.md)。
+客户端 GPU 物品模型渲染优化模组，本分支适用于 Minecraft 1.21.4 / Fabric Loader 0.16 及以上，需要 Fabric API，使用 Java 21，MIT 许可证。NeoForge 版本见 `master` 分支，移植对照与已知问题见 [Fabric 移植说明](FABRIC-PORT.md)。
 
 ![Carbon](branding/mod-cover.svg)
 
@@ -36,13 +36,13 @@ cacheUpdateBudgetMs = 2.0
 
 Iris 访问集中在 `IrisCompatibility`，无需向 Iris 类注入 Mixin，也不修改其原生着色器程序。Carbon 保留 Iris 的扩展顶点、材质标识和渲染目标，为自己的绘制构建实例化变体，支持主渲染、光影阴影和管线重载。
 
-NeoForge 分支已验证 Iris `1.8.14-beta.1+mc1.21.1` 与 Photon `v1.4`；Fabric 分支已验证 Iris `1.8.14-beta.1+1.21.1-fabric` 与 Photon `v1.4`，包括光影阴影。光影的原生阴影由 Iris 管理，特殊通道在需要时保留原生提交。
+NeoForge 分支已验证 Iris `1.8.14-beta.1+mc1.21.1` 与 Photon `v1.4`；Fabric 1.21.1 分支已验证 Iris `1.8.14-beta.1+1.21.1-fabric` 与 Photon `v1.4`，包括光影阴影；1.21.4 分支已在 Iris `1.8.8+1.21.4` 下运行，尚未加载光影包验证。光影的原生阴影由 Iris 管理，特殊通道在需要时保留原生提交。
 
 ## 验证与构建
 
 [更新记录](CHANGELOG.md) · [SVG 封面](branding/mod-cover.svg)
 
-使用 Java 21，执行 `gradlew.bat build`，输出 `build/libs/carbon-1.21.1.9-B-fabric.jar`。`gradlew.bat prodClient -PsmokeTest` 以生产环境 Jar 启动带 Sodium、Iris 与 Mod Menu 的客户端，并运行自动掉落物冒烟测试；去掉 `-PsmokeTest` 则手动测试。
+使用 Java 21，执行 `gradlew.bat build`，输出 `build/libs/carbon-1.21.4.9-B-fabric.jar`。`gradlew.bat prodClient -PsmokeTest` 以生产环境 Jar 启动带 Sodium、Iris 与 Mod Menu 的客户端，并运行自动掉落物冒烟测试；去掉 `-PsmokeTest` 则手动测试。
 
 ## 分支与致谢
 
@@ -51,6 +51,7 @@ NeoForge 分支已验证 Iris `1.8.14-beta.1+mc1.21.1` 与 Photon `v1.4`；Fabri
 | [`26.3`](https://github.com/khiqwq/Carbon/tree/26.3) | 26.3 | Fabric Loader 0.19.3+，Java 25 | MIT |
 | [`26.2`](https://github.com/khiqwq/Carbon/tree/26.2) | 26.2 | Fabric Loader 0.19.3+，Java 25 | MIT |
 | [`1.21.11`](https://github.com/khiqwq/Carbon/tree/1.21.11) | 1.21.11 | Fabric Loader 0.18+，Java 21 | MIT |
+| [`1.21.4`](https://github.com/khiqwq/Carbon/tree/1.21.4) | 1.21.4 | Fabric Loader 0.16+，Java 21 | MIT |
 | [`1.21.1`](https://github.com/khiqwq/Carbon/tree/1.21.1) | 1.21.1 | Fabric Loader 0.16+，Java 21 | MIT |
 | [`1.20.1`](https://github.com/khiqwq/Carbon/tree/1.20.1) | 1.20.1 | Fabric Loader 0.15+，Java 17 | GPL-3.0 |
 | [`1.17.1`](https://github.com/khiqwq/Carbon/tree/1.17.1) | 1.17.1 | Fabric Loader 0.15+，Java 16+ | GPL-3.0 |

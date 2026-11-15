@@ -12,9 +12,12 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.client.renderer.ItemBlockRenderTypes;
 import net.minecraft.client.renderer.RenderType;
-import net.minecraft.client.renderer.ShaderInstance;
+import net.minecraft.client.renderer.CompiledShaderProgram;
+import net.minecraft.client.renderer.FogParameters;
 import net.minecraft.client.renderer.LightTexture;
 import net.minecraft.client.renderer.entity.ItemEntityRenderer;
+import net.minecraft.client.renderer.entity.state.ItemEntityRenderState;
+import net.minecraft.client.renderer.item.ItemStackRenderState;
 import net.minecraft.client.renderer.texture.OverlayTexture;
 import net.minecraft.client.renderer.texture.SpriteContents;
 import net.minecraft.client.renderer.texture.TextureAtlas;
@@ -116,6 +119,9 @@ public final class DroppedItemBatchRenderer {
     private int frame;
     private boolean active;
     private boolean failed;
+    private ItemEntityRenderState capturedState;
+    private ItemEntity capturedEntity;
+    private float capturedPartialTick;
     private boolean enabled;
     private int irisGeneration = -1;
     private final org.joml.Vector3f irisCamera = new org.joml.Vector3f();
@@ -311,20 +317,19 @@ public final class DroppedItemBatchRenderer {
                 cached.motionTick = Long.MIN_VALUE;
                 cached.roll = 0;
                 cached.rate = 0;
-                BakedModel base = itemRenderer.getItemModelShaper().getItemModel(stack);
-                cached.dynamicModel = base.getClass() == SimpleBakedModel.class && base.getOverrides().overrides.length != 0;
-                if (base.getClass() == SimpleBakedModel.class && !cached.dynamicModel) {
+                if (cached.state == null) cached.state = new ItemStackRenderState();
+                Minecraft.getInstance().getItemModelResolver()
+                        .updateForTopItem(cached.state, stack, ItemDisplayContext.GROUND, false, level, null, entity.getId());
+                BakedModel base = model(cached.state);
+                cached.dynamicModel = base != null && base.getClass() != SimpleBakedModel.class;
+                if (base != null && !cached.dynamicModel) {
                     cached.batch = find(stack, base, true);
                 }
                 cached.dynamicFoil = !stack.has(DataComponents.ENCHANTMENT_GLINT_OVERRIDE)
                         && dynamicFoil.getOrDefault(stack.getItem().getClass(), true);
             }
             if (cached.batch == null && !cached.dynamicModel && cached.dynamicFoil) {
-                BakedModel model = itemRenderer.getModel(stack, level, null, entity.getId());
-                cached.batch = find(stack, model, true);
-            }
-            if (cached.dynamicModel) {
-                cached.batch = find(stack, itemRenderer.getModel(stack, level, null, entity.getId()), true);
+                cached.batch = find(stack, model(cached.state), true);
             }
             GpuDroppedItemBatch batch = cached.batch;
             if (batch != null && cached.dynamicFoil) {
@@ -372,7 +377,7 @@ public final class DroppedItemBatchRenderer {
                                 pose.pushPose();
                                 pose.translate(offset.x, offset.y + ((entity.getId() * 0x9E3779B9) >>> 16) * (0.003f / 65535), offset.z);
                                 pose.mulPose(rotation);
-                                itemRenderer.render(stack, ItemDisplayContext.GROUND, false, pose, buffers, light, OverlayTexture.NO_OVERLAY, batch.model);
+                                itemRenderer.renderStatic(stack, ItemDisplayContext.GROUND, light, OverlayTexture.NO_OVERLAY, pose, buffers, level, entity.getId());
                                 pose.popPose();
                             }
                         } finally { capturing = false; }
@@ -391,6 +396,20 @@ public final class DroppedItemBatchRenderer {
             }
         }
         return submitted;
+    }
+
+    public void captureEntity(ItemEntity entity, ItemEntityRenderState state, float partialTick) {
+        capturedState = state;
+        capturedEntity = entity;
+        capturedPartialTick = partialTick;
+    }
+
+    public ItemEntity entity(ItemEntityRenderState state) {
+        return state == capturedState ? capturedEntity : null;
+    }
+
+    public float entityPartialTick() {
+        return capturedPartialTick;
     }
 
     public void addShadow(ItemEntity entity, float partialTick, boolean enabled) {
@@ -550,6 +569,10 @@ public final class DroppedItemBatchRenderer {
         return remainingView;
     }
 
+    private static BakedModel model(ItemStackRenderState state) {
+        return state.activeLayerCount > 0 ? state.layers[0].model : null;
+    }
+
     private GpuDroppedItemBatch find(ItemStack stack, BakedModel model, boolean entityBatch) {
         if (stack.isEmpty()) {
             return null;
@@ -581,8 +604,8 @@ public final class DroppedItemBatchRenderer {
             if (result == null) {
                 boolean supported = true;
                 for (BakedModel pass : List.of(model)) {
-                    for (RenderType type : List.of(ItemBlockRenderTypes.getRenderType(stack, true))) {
-                        supported &= type == RenderType.entitySolid(TextureAtlas.LOCATION_BLOCKS) || type == RenderType.entityCutout(TextureAtlas.LOCATION_BLOCKS) || type == RenderType.entityCutoutNoCull(TextureAtlas.LOCATION_BLOCKS) || type == RenderType.entityTranslucentCull(TextureAtlas.LOCATION_BLOCKS) || type == RenderType.itemEntityTranslucentCull(TextureAtlas.LOCATION_BLOCKS);
+                    for (RenderType type : List.of(ItemBlockRenderTypes.getRenderType(stack))) {
+                        supported &= type == RenderType.entitySolid(TextureAtlas.LOCATION_BLOCKS) || type == RenderType.entityCutout(TextureAtlas.LOCATION_BLOCKS) || type == RenderType.entityCutoutNoCull(TextureAtlas.LOCATION_BLOCKS) || type == RenderType.itemEntityTranslucentCull(TextureAtlas.LOCATION_BLOCKS);
                     }
                 }
                 if (supported) {
@@ -627,12 +650,12 @@ public final class DroppedItemBatchRenderer {
                                     RenderType type = pass == 0 ? mesh.type : RenderType.glint();
                                     type.setupRenderState();
                                     try {
-                                        ShaderInstance vanilla = Carbon.IRIS.shader(RenderSystem.getShader(), type, true);
+                                        CompiledShaderProgram vanilla = Carbon.IRIS.shader(RenderSystem.getShader(), type, true);
                                         if (vanilla != null) {
                                             vanilla.setDefaultUniforms(com.mojang.blaze3d.vertex.VertexFormat.Mode.QUADS, view, projection, Minecraft.getInstance().getWindow());
                                             RenderSystem.setupShaderLights(vanilla);
                                             for (int sampler = 0; sampler < 3; sampler++) {
-                                                vanilla.setSampler("Sampler" + sampler, RenderSystem.getShaderTexture(sampler));
+                                                vanilla.bindSampler("Sampler" + sampler, RenderSystem.getShaderTexture(sampler));
                                             }
                                             vanilla.apply();
                                         }
@@ -660,13 +683,13 @@ public final class DroppedItemBatchRenderer {
                                             for (int sampler = 0; sampler < 3; sampler++) {
                                                 glUniform1i(glGetUniformLocation(drawProgram, "Sampler" + sampler), sampler);
                                             }
-                                            float[] fog = RenderSystem.getShaderFogColor();
-                                            glUniform4f(glGetUniformLocation(drawProgram, "FogColor"), fog[0], fog[1], fog[2], fog[3]);
+                                            FogParameters fog = RenderSystem.getShaderFog();
+                                            glUniform4f(glGetUniformLocation(drawProgram, "FogColor"), fog.red(), fog.green(), fog.blue(), fog.alpha());
                                             float[] color = RenderSystem.getShaderColor();
                                             glUniform4f(glGetUniformLocation(drawProgram, "ColorModulator"), color[0], color[1], color[2], color[3]);
-                                            glUniform1f(glGetUniformLocation(drawProgram, "FogStart"), RenderSystem.getShaderFogStart());
-                                            glUniform1f(glGetUniformLocation(drawProgram, "FogEnd"), RenderSystem.getShaderFogEnd());
-                                            glUniform1i(glGetUniformLocation(drawProgram, "FogShape"), RenderSystem.getShaderFogShape().getIndex());
+                                            glUniform1f(glGetUniformLocation(drawProgram, "FogStart"), fog.start());
+                                            glUniform1f(glGetUniformLocation(drawProgram, "FogEnd"), fog.end());
+                                            glUniform1i(glGetUniformLocation(drawProgram, "FogShape"), fog.shape().getIndex());
                                             if (vanilla != null && vanilla.LIGHT0_DIRECTION != null && vanilla.LIGHT1_DIRECTION != null) {
                                                 glUniform3fv(glGetUniformLocation(drawProgram, "Light0"), vanilla.LIGHT0_DIRECTION.getFloatBuffer());
                                                 glUniform3fv(glGetUniformLocation(drawProgram, "Light1"), vanilla.LIGHT1_DIRECTION.getFloatBuffer());
@@ -846,6 +869,7 @@ public final class DroppedItemBatchRenderer {
 
     public static final class EntityCache {
         private ItemStack stack;
+        private ItemStackRenderState state;
         private GpuDroppedItemBatch batch;
         private int version;
         private int generation = -1;

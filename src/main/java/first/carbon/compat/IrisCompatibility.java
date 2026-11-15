@@ -7,7 +7,7 @@ import first.carbon.client.ItemBatchRenderer;
 import it.unimi.dsi.fastutil.ints.Int2IntOpenHashMap;
 import net.minecraft.client.renderer.MultiBufferSource;
 import net.minecraft.client.renderer.RenderType;
-import net.minecraft.client.renderer.ShaderInstance;
+import net.minecraft.client.renderer.CompiledShaderProgram;
 import net.minecraft.world.item.ItemStack;
 import org.joml.Vector3f;
 import org.lwjgl.opengl.GL;
@@ -153,7 +153,7 @@ public final class IrisCompatibility {
         MultiBufferSource original = source;
         if (active && canInstance()) {
             if (shadowPass() && (type == RenderType.glint() || type == RenderType.glintTranslucent()
-                    || type == RenderType.entityGlint() || type == RenderType.entityGlintDirect())) return source.getBuffer(type);
+                    || type == RenderType.entityGlint() || type == RenderType.armorEntityGlint())) return source.getBuffer(type);
             try {
                 while (original.getClass().getName().equals("net.irisshaders.iris.layer.BufferSourceWrapper")) {
                     original = (MultiBufferSource) original.getClass().getMethod("getOriginal").invoke(original);
@@ -181,24 +181,23 @@ public final class IrisCompatibility {
         }
     }
 
-    public ShaderInstance shader(ShaderInstance selected, RenderType type, boolean dropped) {
+    public CompiledShaderProgram shader(CompiledShaderProgram selected, RenderType type, boolean dropped) {
         if (active && pipeline != null && (dropped || type instanceof Layer)) {
             try {
                 if (!dropped && (boolean) handPass.invokeExact()) return selected;
                 RenderType original = unwrap(type);
                 String key;
                 if (shadowPass()) key = "SHADOW_ENTITIES_CUTOUT";
-                else if (original == RenderType.glint() || original == RenderType.glintTranslucent() || original == RenderType.entityGlint() || original == RenderType.entityGlintDirect()) key = "GLINT";
+                else if (original == RenderType.glint() || original == RenderType.glintTranslucent() || original == RenderType.entityGlint() || original == RenderType.armorEntityGlint()) key = "GLINT";
                 else if (original == RenderType.entitySolid(net.minecraft.client.renderer.texture.TextureAtlas.LOCATION_BLOCKS)) key = "ENTITIES_SOLID_DIFFUSE";
-                else if (original == RenderType.entityTranslucentCull(net.minecraft.client.renderer.texture.TextureAtlas.LOCATION_BLOCKS)
-                        || original == RenderType.itemEntityTranslucentCull(net.minecraft.client.renderer.texture.TextureAtlas.LOCATION_BLOCKS)) key = "ENTITIES_TRANSLUCENT";
+                else if (original == RenderType.itemEntityTranslucentCull(net.minecraft.client.renderer.texture.TextureAtlas.LOCATION_BLOCKS)) key = "ENTITIES_TRANSLUCENT";
                 else key = "ENTITIES_CUTOUT_DIFFUSE";
                 Object shaders = pipeline.getClass().getMethod("getShaderMap").invoke(pipeline);
                 Class<?> keys = Class.forName("net.irisshaders.iris.pipeline.programs.ShaderKey");
                 @SuppressWarnings({"unchecked", "rawtypes"})
                 Object shaderKey = Enum.valueOf((Class) keys, key);
                 Object shader = shaders.getClass().getMethod("getShader", keys).invoke(shaders, shaderKey);
-                if (shader instanceof ShaderInstance instance) return instance;
+                if (shader instanceof CompiledShaderProgram instance) return instance;
             } catch (Throwable exception) {
                 blocked = true;
             }
@@ -206,19 +205,19 @@ public final class IrisCompatibility {
         return selected;
     }
 
-    public boolean usesShader(ShaderInstance shader) {
+    public boolean usesShader(CompiledShaderProgram shader) {
         return active && shader != null && shader.getClass().getName().startsWith("net.irisshaders.iris.");
     }
 
-    public void draw(ShaderInstance shader, int mode, int instanceBuffer, int vertexBuffer, int indexBuffer,
+    public void draw(CompiledShaderProgram shader, int mode, int instanceBuffer, int vertexBuffer, int indexBuffer,
                      VertexFormat format, int indices, int count, Vector3f camera, float clock, float scale,
                      Vector3f center, Vector3f halfSize, boolean flat) {
         if (!blocked) {
             try (MemoryStack memory = MemoryStack.stackPush()) {
-                long key = (long) shader.getId() << 3 | mode;
+                long key = (long) shader.getProgramId() << 3 | mode;
                 Program program = programs.get(key);
                 if (program == null) {
-                    program = new Program(shader.getId(), mode);
+                    program = new Program(shader.getProgramId(), mode);
                     programs.put(key, program);
                 }
                 int binding = program.binding;
@@ -230,7 +229,7 @@ public final class IrisCompatibility {
                     glUseProgram(program.id);
                     FloatBuffer floats = memory.mallocFloat(16);
                     IntBuffer integers = memory.mallocInt(16);
-                    for (Uniform uniform : program.uniforms) uniform.copy(shader.getId(), floats, integers);
+                    for (Uniform uniform : program.uniforms) uniform.copy(shader.getProgramId(), floats, integers);
                     glUniform3f(program.camera, camera.x, camera.y, camera.z);
                     glUniform1f(program.clock, clock);
                     glUniform1f(program.scale, scale);
@@ -275,7 +274,7 @@ public final class IrisCompatibility {
                     if (previous != 0 && length > 0) glBindBufferRange(GL_SHADER_STORAGE_BUFFER, binding, previous, offset, length);
                     else glBindBufferBase(GL_SHADER_STORAGE_BUFFER, binding, previous);
                     glBindBuffer(GL_SHADER_STORAGE_BUFFER, generic);
-                    glUseProgram(shader.getId());
+                    glUseProgram(shader.getProgramId());
                 }
             } catch (Throwable exception) {
                 blocked = true;

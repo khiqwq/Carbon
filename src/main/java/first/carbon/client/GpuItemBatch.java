@@ -37,9 +37,10 @@ final class GpuItemBatch implements AutoCloseable {
     int lastFrame;
     boolean closed;
 
-    GpuItemBatch(ItemStack stack, BakedModel model, ItemBatchRenderer renderer) {
+    GpuItemBatch(ItemStack stack, BakedModel model, int[] tintLayers, ItemBatchRenderer renderer) {
         this.stack = stack.copy();
         this.model = model;
+        int[] tints = tintLayers == null || tintLayers.length == 0 ? new int[]{-1} : tintLayers.clone();
         RandomSource random = RandomSource.create(42);
         List<BakedQuad> quads = new ArrayList<>();
         for (int face = 0; face < 7; face++) {
@@ -53,7 +54,7 @@ final class GpuItemBatch implements AutoCloseable {
                     if (image.format().hasAlpha()) {
                         for (int y = 0; y < image.getHeight() && opaque; y++) {
                             for (int x = 0; x < image.getWidth() && opaque; x++) {
-                                int alpha = image.getPixelRGBA(x, y) >>> 24;
+                                int alpha = image.getPixel(x, y) >>> 24;
                                 opaque = alpha == 0 || alpha == 255;
                             }
                         }
@@ -70,7 +71,7 @@ final class GpuItemBatch implements AutoCloseable {
         renderer.capturing = true;
         try (ByteBufferBuilder allocator = new ByteBufferBuilder(4096)) {
             BufferBuilder builder = new BufferBuilder(allocator, VertexFormat.Mode.QUADS, DefaultVertexFormat.NEW_ENTITY);
-            Minecraft.getInstance().getItemRenderer().renderModelLists(model, stack, 0, 0, new PoseStack(), builder);
+            Minecraft.getInstance().getItemRenderer().renderModelLists(model, tints, 0, 0, new PoseStack(), builder);
             try (MeshData mesh = builder.build()) {
                 if (mesh == null) throw new IllegalArgumentException("Empty model");
                 ByteBuffer vertices = mesh.vertexBuffer();

@@ -2,9 +2,10 @@ package first.carbon.client;
 
 import com.mojang.blaze3d.systems.RenderSystem;
 import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap;
+import net.minecraft.client.renderer.CompiledShaderProgram;
+import net.minecraft.client.renderer.FogParameters;
 import net.minecraft.client.renderer.LightTexture;
 import net.minecraft.client.renderer.RenderType;
-import net.minecraft.client.renderer.ShaderInstance;
 import net.minecraft.core.BlockPos;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.util.Mth;
@@ -169,9 +170,9 @@ final class GpuShadowBatch implements AutoCloseable {
             dirty = false;
             type.setupRenderState();
             try (MemoryStack memory = MemoryStack.stackPush()) {
-                ShaderInstance vanilla = RenderSystem.getShader();
+                CompiledShaderProgram vanilla = RenderSystem.getShader();
                 if (vanilla != null) {
-                    vanilla.setSampler("Sampler0", RenderSystem.getShaderTexture(0));
+                    vanilla.bindSampler("Sampler0", RenderSystem.getShaderTexture(0));
                     vanilla.apply();
                 }
                 glUseProgram(program);
@@ -180,11 +181,11 @@ final class GpuShadowBatch implements AutoCloseable {
                 glUniform3f(cameraUniform, (float) (camera.x - originX), (float) (camera.y - originY), (float) (camera.z - originZ));
                 float[] color = RenderSystem.getShaderColor();
                 glUniform4f(colorUniform, color[0], color[1], color[2], color[3]);
-                float[] fog = RenderSystem.getShaderFogColor();
-                glUniform4f(fogColorUniform, fog[0], fog[1], fog[2], fog[3]);
-                glUniform1f(fogStartUniform, RenderSystem.getShaderFogStart());
-                glUniform1f(fogEndUniform, RenderSystem.getShaderFogEnd());
-                glUniform1i(fogShapeUniform, RenderSystem.getShaderFogShape().getIndex());
+                FogParameters fog = RenderSystem.getShaderFog();
+                glUniform4f(fogColorUniform, fog.red(), fog.green(), fog.blue(), fog.alpha());
+                glUniform1f(fogStartUniform, fog.start());
+                glUniform1f(fogEndUniform, fog.end());
+                glUniform1i(fogShapeUniform, fog.shape().getIndex());
                 glBindVertexArray(vao);
                 glDrawArraysInstanced(GL_TRIANGLE_STRIP, 0, 4, count);
                 if (vanilla != null) vanilla.clear();

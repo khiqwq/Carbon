@@ -11,7 +11,7 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.ItemBlockRenderTypes;
 import net.minecraft.client.renderer.RenderType;
 import net.minecraft.client.renderer.block.model.BakedQuad;
-import net.minecraft.client.renderer.entity.ItemEntityRenderer;
+import net.minecraft.client.renderer.entity.state.ItemClusterRenderState;
 import net.minecraft.client.renderer.texture.OverlayTexture;
 import net.minecraft.client.renderer.texture.TextureAtlas;
 import net.minecraft.client.renderer.texture.TextureAtlasSprite;
@@ -82,11 +82,11 @@ final class GpuDroppedItemBatch implements AutoCloseable {
         this.foil = foil;
         physics = entityBatch && renderer.physics;
         instanceStride = entityBatch ? 40 : 144;
-        groundScaleY = model.getTransforms().ground.scale.y();
+        groundScaleY = model.getTransforms().ground().scale.y();
         gui3d = model.isGui3d();
         flat = physics || !gui3d;
-        copySpacing = gui3d ? 0 : 0.09375f * model.getTransforms().ground.scale.z();
-        RandomSource copyRandom = RandomSource.create(ItemEntityRenderer.getSeedForItemStack(stack));
+        copySpacing = gui3d ? 0 : 0.09375f * model.getTransforms().ground().scale.z();
+        RandomSource copyRandom = RandomSource.create(ItemClusterRenderState.getSeedForItemStack(stack));
         float spread = gui3d ? 0.15f : 0.075f;
         for (int copy = 1; copy < 5; copy++) {
             int offset = copy * 3;
@@ -107,9 +107,8 @@ final class GpuDroppedItemBatch implements AutoCloseable {
         Vector3f maximum = new Vector3f(Float.NEGATIVE_INFINITY);
         try {
             for (BakedModel pass : List.of(model)) {
-                boolean translucent = Stream.of(ItemBlockRenderTypes.getRenderType(stack, true)).anyMatch(type ->
-                        type == RenderType.entityTranslucentCull(TextureAtlas.LOCATION_BLOCKS)
-                                || type == RenderType.itemEntityTranslucentCull(TextureAtlas.LOCATION_BLOCKS));
+                boolean translucent = Stream.of(ItemBlockRenderTypes.getRenderType(stack)).anyMatch(type ->
+                        type == RenderType.itemEntityTranslucentCull(TextureAtlas.LOCATION_BLOCKS));
                 RandomSource random = RandomSource.create(42);
                 for (int face = -1; face < 6; face++) {
                     random.setSeed(42);
@@ -122,7 +121,7 @@ final class GpuDroppedItemBatch implements AutoCloseable {
                                 if (image.format().hasAlpha()) {
                                     for (int y = 0; y < image.getHeight() && binaryAlpha; y++) {
                                         for (int x = 0; x < image.getWidth() && binaryAlpha; x++) {
-                                            int alpha = image.getPixelRGBA(x, y) >>> 24;
+                                            int alpha = image.getPixel(x, y) >>> 24;
                                             binaryAlpha = alpha == 0 || alpha == 255;
                                         }
                                     }
@@ -143,10 +142,9 @@ final class GpuDroppedItemBatch implements AutoCloseable {
                     }
                 }
             }
-            Minecraft.getInstance().getItemRenderer().render(stack, ItemDisplayContext.GROUND, false, new PoseStack(),
+            Minecraft.getInstance().getItemRenderer().renderStatic(stack, ItemDisplayContext.GROUND, 0, OverlayTexture.NO_OVERLAY, new PoseStack(),
                     type -> {
-                        RenderType target = type == RenderType.entityTranslucentCull(TextureAtlas.LOCATION_BLOCKS)
-                                || type == RenderType.itemEntityTranslucentCull(TextureAtlas.LOCATION_BLOCKS)
+                        RenderType target = type == RenderType.itemEntityTranslucentCull(TextureAtlas.LOCATION_BLOCKS)
                                 ? RenderType.entityCutout(TextureAtlas.LOCATION_BLOCKS) : type;
                         return builders.computeIfAbsent(target, key -> {
                             if (key.format() != DefaultVertexFormat.NEW_ENTITY || key.mode() != VertexFormat.Mode.QUADS) {
@@ -156,7 +154,7 @@ final class GpuDroppedItemBatch implements AutoCloseable {
                             allocators.put(key, allocator);
                             return new BufferBuilder(allocator, key.mode(), key.format());
                         });
-                    }, 0, OverlayTexture.NO_OVERLAY, model);
+                    }, Minecraft.getInstance().level, 0);
             for (Map.Entry<RenderType, BufferBuilder> entry : builders.entrySet()) {
                 try (MeshData mesh = entry.getValue().build()) {
                     if (mesh != null) {

@@ -36,12 +36,12 @@ public final class SmokeTest implements ClientModInitializer {
         if (stage == 0 && ticks > 40 && minecraft.getOverlay() == null && minecraft.level == null && minecraft.screen != null) {
             stage = 1;
             String name = "carbon-smoke-" + System.currentTimeMillis();
-            GameRules rules = new GameRules();
+            GameRules rules = new GameRules(net.minecraft.world.flag.FeatureFlags.VANILLA_SET);
             rules.getRule(GameRules.RULE_DAYLIGHT).set(false, null);
             rules.getRule(GameRules.RULE_DOMOBSPAWNING).set(false, null);
             LevelSettings settings = new LevelSettings(name, GameType.CREATIVE, false, Difficulty.PEACEFUL, true, rules, WorldDataConfiguration.DEFAULT);
             minecraft.createWorldOpenFlows().createFreshLevel(name, settings, new WorldOptions(1L, false, false),
-                    registries -> registries.registryOrThrow(Registries.WORLD_PRESET).getHolderOrThrow(WorldPresets.FLAT).value().createWorldDimensions(), new net.minecraft.client.gui.screens.TitleScreen());
+                    registries -> registries.lookupOrThrow(Registries.WORLD_PRESET).getOrThrow(WorldPresets.FLAT).value().createWorldDimensions(), new net.minecraft.client.gui.screens.TitleScreen());
         }
         if (stage == 1 && minecraft.player != null && minecraft.level != null && minecraft.getSingleplayerServer() != null && minecraft.screen == null) {
             stage = 2;
